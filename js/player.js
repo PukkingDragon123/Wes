@@ -1,0 +1,315 @@
+/* =============================================================================
+   player.js — the raccoon. Momentum-based, "bouncy" Celeste-like movement:
+   variable jump height, coyote time, jump buffering, wall slide, wall jump,
+   stamina-based wall climbing, squash & stretch, and dust juice.
+   Interactions (loot / hide / throw) are driven by game.js which sets flags
+   and calls the small API at the bottom.
+   ========================================================================== */
+(function (global) {
+  "use strict";
+  const RC = global.RC;
+  const M = RC.M, T = RC.TILE, L = () => RC.Level, Pt = () => RC.Particles, A = () => RC.Audio;
+
+  // --- tuned constants (pixels & seconds) --------------------------------
+  const C = {
+    W: 10, H: 15,
+    GRAV: 900, GRAV_HOLD: 560, MAX_FALL: 330, FAST_FALL: 470,
+    RUN: 108, ACCEL_G: 950, ACCEL_A: 680, FRIC_G: 1150, FRIC_A: 300,
+    JUMP_VY: -292, JUMP_CUT: 0.42,
+    COYOTE: 0.09, BUFFER: 0.11,
+    WALL_SLIDE: 52, WALL_SLIDE_FAST: 140,
+    WJ_VX: 158, WJ_VY: -286, WJ_LOCK: 0.16,
+    CLIMB_UP: 66, CLIMB_DOWN: 94,
+    STAM_MAX: 1.95, ST_STILL: 0.30, ST_UP: 1.05, ST_DOWN: 0.55, ST_SLIDE: 0.32, ST_WJ: 0.22,
+  };
+
+  function Player(x, y, game) {
+    this.game = game;
+    this.w = C.W; this.h = C.H;
+    this.x = x - this.w / 2;
+    this.y = y - this.h;
+    this.vx = 0; this.vy = 0;
+    this.dir = 1;
+    this.grounded = true; this.wasGrounded = true;
+    this.wallDir = 0;             // -1 wall on left, +1 right, 0 none
+    this.grabbing = false;
+    this.stam = C.STAM_MAX;
+    this.coyote = 0; this.buffer = 0; this.lock = 0; this.dropTimer = 0;
+    this.sx = 1; this.sy = 1;
+    this.animT = 0; this.state = "idle";
+    this.stepAcc = 0; this.slideAcc = 0; this.blinkT = RC.rng() * 4;
+    this.blink = false;
+    this.hidden = false; this.hideSpot = null;
+    this.carry = null; this.throwT = 1;
+    this.dead = false; this.exiting = false;
+    this.faceLockT = 0;
+    this.jumpHeld = false;
+  }
+
+  Player.prototype.center = function () { return { x: this.x + this.w / 2, y: this.y + this.h / 2 }; };
+  Player.prototype.cx = function () { return this.x + this.w / 2; };
+  Player.prototype.cy = function () { return this.y + this.h / 2; };
+  Player.prototype.feetY = function () { return this.y + this.h; };
+
+  // --- collision helpers -------------------------------------------------
+  Player.prototype._solidAt = function (nx, ny) { return L().rectSolid(nx, ny, this.w, this.h); };
+
+  Player.prototype._moveX = function (dx) {
+    this.x += dx;
+    if (this._solidAt(this.x, this.y)) {
+      const st = dx > 0 ? -1 : 1;
+      let guard = 0;
+      while (this._solidAt(this.x, this.y) && guard++ < 64) this.x += st;
+      this.vx = 0;
+      return true;
+    }
+    return false;
+  };
+
+  Player.prototype._moveY = function (dy) {
+    const prevBottom = this.y + this.h;
+    this.y += dy;
+    // one-way platforms: only when moving down and not dropping through
+    if (dy > 0 && this.dropTimer <= 0) {
+      const newBottom = this.y + this.h;
+      const tyA = Math.floor(prevBottom / T), tyB = Math.floor((newBottom - 0.001) / T);
+      const x0 = Math.floor(this.x / T), x1 = Math.floor((this.x + this.w - 1) / T);
+      for (let ty = tyA; ty <= tyB; ty++) {
+        const top = ty * T;
+        if (top + 0.001 >= prevBottom && top <= newBottom) {
+          let hit = false;
+          for (let tx = x0; tx <= x1; tx++) if (L().oneway(tx, ty)) { hit = true; break; }
+          if (hit) { this.y = top - this.h; this.vy = 0; return true; }
+        }
+      }
+    }
+    if (this._solidAt(this.x, this.y)) {
+      const st = dy > 0 ? -1 : 1;
+      let guard = 0;
+      while (this._solidAt(this.x, this.y) && guard++ < 64) this.y += st;
+      this.vy = 0;
+      return true;
+    }
+    return false;
+  };
+
+  Player.prototype._detectContacts = function () {
+    // grounded (solid or resting on one-way)
+    let g = this._solidAt(this.x, this.y + 1);
+    if (!g) {
+      const fb = this.y + this.h, ty = Math.floor(fb / T);
+      if (Math.abs(ty * T - fb) < 1.6) {
+        const x0 = Math.floor(this.x / T), x1 = Math.floor((this.x + this.w - 1) / T);
+        for (let tx = x0; tx <= x1; tx++) if (L().oneway(tx, ty)) { g = true; break; }
+      }
+    }
+    this.grounded = g;
+    // wall (shrunk vertical span so floors/ceilings don't register)
+    const left = L().rectSolid(this.x - 1, this.y + 3, this.w, this.h - 6);
+    const right = L().rectSolid(this.x + 1, this.y + 3, this.w, this.h - 6);
+    if (left && !right) this.wallDir = -1;
+    else if (right && !left) this.wallDir = 1;
+    else if (left && right) this.wallDir = this.dir; // pinched: keep facing
+    else this.wallDir = 0;
+  };
+
+  // --- main update -------------------------------------------------------
+  Player.prototype.update = function (dt, input) {
+    this.animT += dt;
+    this.throwT = Math.min(1, this.throwT + dt * 6);
+    if (this.faceLockT > 0) this.faceLockT -= dt;
+
+    // blink timer
+    this.blinkT -= dt;
+    if (this.blinkT <= 0) { this.blink = true; if (this.blinkT < -0.11) { this.blink = false; this.blinkT = 2 + RC.rng() * 3; } }
+
+    if (this.hidden || this.dead || this.exiting) {
+      this._easeScale(dt);
+      return;
+    }
+
+    const ax = input.axisX();
+    const ay = input.axisY();
+
+    // timers
+    this.coyote = this.grounded ? C.COYOTE : Math.max(0, this.coyote - dt);
+    if (input.pressed("jump")) this.buffer = C.BUFFER; else this.buffer = Math.max(0, this.buffer - dt);
+    if (this.lock > 0) this.lock -= dt;
+    if (this.dropTimer > 0) this.dropTimer -= dt;
+
+    // drop through one-way: down + jump while grounded on one-way
+    if (this.grounded && ay > 0 && input.pressed("jump")) { this.dropTimer = 0.12; this.buffer = 0; }
+
+    // ---- wall grab / climb ----
+    const grabHeld = input.is("grab");
+    const canGrab = grabHeld && !this.grounded && this.wallDir !== 0 && this.stam > 0
+      && ((this.wallDir < 0 && ax <= 0) || (this.wallDir > 0 && ax >= 0) || true);
+    this.grabbing = false;
+    if (canGrab) {
+      this.grabbing = true;
+      this.dir = this.wallDir;      // face the wall
+      this.faceLockT = 0.05;
+      this.vx = 0;
+      if (ay < 0) { this.vy = -C.CLIMB_UP; this.stam -= C.ST_UP * dt; }
+      else if (ay > 0) { this.vy = C.CLIMB_DOWN; this.stam -= C.ST_DOWN * dt; }
+      else { this.vy = 0; this.stam -= C.ST_STILL * dt; }
+      // climb dust + tick
+      this.slideAcc += dt;
+      if (ay !== 0 && this.slideAcc > 0.14) { this.slideAcc = 0; A().play("climb"); Pt().trail(this.cx() + this.wallDir * 5, this.cy(), "#c9c3e6"); }
+      if (this.stam < 0) this.stam = 0;
+    }
+
+    // ---- horizontal movement (unless wall-locked or grabbing) ----
+    if (!this.grabbing && this.lock <= 0) {
+      const accel = this.grounded ? C.ACCEL_G : C.ACCEL_A;
+      const fric = this.grounded ? C.FRIC_G : C.FRIC_A;
+      if (ax !== 0) {
+        this.vx = M.approach(this.vx, ax * C.RUN, accel * dt);
+        if (this.faceLockT <= 0) this.dir = ax;
+      } else {
+        this.vx = M.approach(this.vx, 0, fric * dt);
+      }
+    }
+
+    // ---- gravity / wall slide ----
+    if (!this.grabbing) {
+      const rising = this.vy < 0;
+      const gravNow = (rising && input.is("jump")) ? C.GRAV_HOLD : C.GRAV;
+      this.vy += gravNow * dt;
+      // wall slide when pressing into a wall in the air
+      const pressingWall = this.wallDir !== 0 && ((this.wallDir < 0 && ax < 0) || (this.wallDir > 0 && ax > 0));
+      if (!this.grounded && pressingWall && this.vy > 0) {
+        const cap = ay > 0 ? C.WALL_SLIDE_FAST : C.WALL_SLIDE;
+        if (this.vy > cap) this.vy = M.approach(this.vy, cap, 900 * dt);
+        this.slideAcc += dt;
+        if (this.slideAcc > 0.08) { this.slideAcc = 0; Pt().trail(this.cx() + this.wallDir * 5, this.cy() + 4, "#b7b1d6"); }
+      }
+      const maxFall = ay > 0 ? C.FAST_FALL : C.MAX_FALL;
+      if (this.vy > maxFall) this.vy = maxFall;
+    }
+
+    // ---- jump / wall jump ----
+    if (this.buffer > 0) {
+      if (this.grounded || this.coyote > 0) {
+        this._jump(); this.buffer = 0; this.coyote = 0;
+      } else if (this.wallDir !== 0) {
+        this._wallJump(); this.buffer = 0;
+      }
+    }
+    // variable height: releasing jump while rising cuts velocity
+    if (input.released("jump") && this.vy < 0) this.vy *= C.JUMP_CUT;
+
+    // ---- integrate + collide ----
+    this.wasGrounded = this.grounded;
+    const prevVy = this.vy;
+    this._moveX(this.vx * dt);
+    const hitY = this._moveY(this.vy * dt);
+    this._detectContacts();
+    if (this.grounded && this.vy > 0) this.vy = 0;
+
+    // landing
+    if (this.grounded && !this.wasGrounded && prevVy > 60) {
+      const power = M.sat((prevVy - 60) / 300);
+      this.sx = 1 + power * 0.5; this.sy = 1 - power * 0.4;
+      Pt().landDust(this.cx(), this.feetY(), power);
+      A().play("land");
+      if (power > 0.5) L().shake(2.5 * power, 0.18);
+    }
+    if (this.grounded) this.stam = C.STAM_MAX;
+
+    // new wall grab sfx
+    if (this.grabbing && !this._wasGrabbing) A().play("wallgrab");
+    this._wasGrabbing = this.grabbing;
+
+    // running dust + footsteps
+    if (this.grounded && Math.abs(this.vx) > 30) {
+      this.stepAcc += Math.abs(this.vx) * dt;
+      if (this.stepAcc > 26) {
+        this.stepAcc = 0;
+        Pt().dust(this.cx() - this.dir * 4, this.feetY(), 2, -this.dir);
+        A().play("step");
+      }
+    }
+
+    this._easeScale(dt);
+    this._pickState(ax, ay);
+  };
+
+  Player.prototype._jump = function () {
+    this.vy = C.JUMP_VY;
+    this.sx = 0.72; this.sy = 1.34;
+    Pt().dust(this.cx(), this.feetY(), 5, 0);
+    A().play("jump");
+  };
+
+  Player.prototype._wallJump = function () {
+    const away = -this.wallDir;
+    this.vx = away * C.WJ_VX;
+    this.vy = C.WJ_VY;
+    this.dir = away; this.faceLockT = C.WJ_LOCK + 0.02;
+    this.lock = C.WJ_LOCK;
+    this.stam = Math.max(0, this.stam - C.ST_WJ);
+    this.sx = 0.8; this.sy = 1.28;
+    Pt().dust(this.cx() + this.wallDir * 4, this.cy() + 4, 6, away);
+    A().play("jump");
+    L().shake(1.4, 0.12);
+  };
+
+  Player.prototype._easeScale = function (dt) {
+    this.sx = M.damp(this.sx, 1, 16, dt);
+    this.sy = M.damp(this.sy, 1, 16, dt);
+  };
+
+  Player.prototype._pickState = function (ax, ay) {
+    if (this.hidden) { this.state = "hide"; return; }
+    if (this.carry && this.grounded && Math.abs(this.vx) < 20) { this.state = "carry"; return; }
+    if (this.grabbing) { this.state = (ay !== 0) ? "climb" : "wall"; return; }
+    if (!this.grounded) {
+      const pressingWall = this.wallDir !== 0 && ((this.wallDir < 0 && ax < 0) || (this.wallDir > 0 && ax > 0));
+      if (pressingWall && this.vy > 0) { this.state = "wall"; return; }
+      this.state = this.vy < 0 ? "jump" : "fall"; return;
+    }
+    if (ay > 0 && Math.abs(this.vx) < 20) { this.state = "crouch"; return; }
+    this.state = Math.abs(this.vx) > 24 ? "run" : "idle";
+  };
+
+  // --- interaction API (called by game.js) ------------------------------
+  Player.prototype.enterHide = function (spot) {
+    this.hidden = true; this.hideSpot = spot;
+    this.vx = 0; this.vy = 0;
+    if (spot) { this.x = spot.x - this.w / 2; this.y = spot.y - this.h; }
+    A().play("hide");
+  };
+  Player.prototype.exitHide = function () {
+    if (!this.hidden) return;
+    this.hidden = false; this.hideSpot = null;
+    this.vy = -120; this.sx = 0.8; this.sy = 1.25;
+    A().play("unhide");
+    Pt().poof(this.cx(), this.cy());
+  };
+  Player.prototype.doThrow = function () {
+    if (!this.carry) return null;
+    const type = this.carry; this.carry = null;
+    this.throwT = 0; this.state = "throw";
+    A().play("throw");
+    const item = { type, x: this.cx() + this.dir * 8, y: this.cy() - 4, vx: this.dir * 190, vy: -150 };
+    return item;
+  };
+
+  // --- draw --------------------------------------------------------------
+  Player.prototype.draw = function (ctx, cam) {
+    if (this.hidden) return;             // the hide-spot wobble is drawn instead
+    const x = this.cx() - cam.x;
+    const y = this.feetY() - cam.y;
+    if (!this.dead) RC.Sprites.shadow(ctx, x, this.feetY() - cam.y + 1, this.w + 4, this.grounded ? 0.3 : 0.16);
+    RC.Sprites.raccoon(ctx, x, y, {
+      dir: this.dir, state: this.dead ? "hurt" : this.state, animT: this.animT,
+      sx: this.sx, sy: this.sy, blink: this.blink,
+      carry: this.carry, throwT: this.throwT,
+    });
+  };
+
+  RC.Player = Player;
+  RC.PlayerConfig = C;
+
+})(window);
