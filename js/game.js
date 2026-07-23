@@ -41,10 +41,20 @@
       this.ctx = this.canvas.getContext("2d");
       this.ctx.imageSmoothingEnabled = false;
       Input.init();
+      Input.initTouch();
+      // tap the game area to advance menus / cutscenes on touch
+      this.canvas.addEventListener("pointerdown", () => {
+        Audio.resume();
+        const s = this.state;
+        if (s === "title" || s === "intro" || (s === "win" && (this.winPhase === 1 || this.winPhase === 3))) Input.pulse("KeyZ", 130);
+      });
       L.build();
       this._resize();
       global.addEventListener("resize", () => this._resize());
       this._spawnAll();
+      this.titleCritter = new RC.Critter("raccoon");
+      this.portraitCritter = new RC.Critter("raccoon");
+      this.winDad = new RC.Critter("raccoon");
       this.checkpoint = { x: L.spawn.x, y: L.spawn.y };
       L.focusCamera(this.player.cx(), this.player.cy());
       this.state = "title";
@@ -140,7 +150,7 @@
     },
 
     _updTitle(dt) {
-      L.cam.x = M.damp(L.cam.x, 40 + Math.sin(this.time * 0.2) * 20, 1, dt);
+      this.titleCritter.update(dt, { grounded: true, vx: 0, state: "idle", dir: 1, expr: "sad", look: { x: 0.15, y: -0.7 } });
       if (Input.pressed("confirm")) {
         Audio.resume(); Audio.play("confirm");
         this.state = "intro"; this.introI = 0; this.introT = 0;
@@ -153,6 +163,7 @@
       // idle-animate the kids & player in the alley
       for (const k of this.kids) k.update(dt);
       this.player.animT += dt;
+      this.portraitCritter.update(dt, { grounded: true, vx: 0, state: "idle", dir: 1, expr: this.introI < 3 ? "sad" : "determined", look: { x: 0.3, y: 0 } });
       if (Input.pressed("confirm") || Input.pressed("jump")) {
         Audio.play("select");
         this.introI++;
@@ -190,6 +201,20 @@
         if (Input.pressed("throw") && pl.carry) {
           const it = pl.doThrow();
           if (it) this.spawnThrowable(it);
+        }
+      }
+
+      // pounce takedown: land on a guard's head from above (gore)
+      if (!pl.hidden && !pl.dead && pl.vy > 40) {
+        for (const g of this.guards) {
+          if (g.dead) continue;
+          if (Math.abs(pl.cx() - g.x) < 10 && pl.feetY() > g.y - 22 && pl.feetY() < g.y - 4) {
+            g.die(pl.cx() < g.x ? -1 : 1);
+            pl.vy = -240; pl.sx = 1.3; pl.sy = 0.7;
+            this.hitstop = 0.08; this.flash = 0.5; this.flashColor = "200,40,55";
+            this._toast("TAKEDOWN!");
+            break;
+          }
         }
       }
 
@@ -271,6 +296,7 @@
       const pad = this.pad;
       this.heli.rot += dt * 46;
       for (const k of (this._winKids || [])) k.update(dt);
+      this.winDad.update(dt, { grounded: true, vx: 0, state: "idle", dir: 1, expr: "happy", look: { x: -0.3, y: -0.2 } });
       Pt.update(dt);
 
       // phases: 0 approach/descend, 1 hover + dialogue, 2 board+lift, 3 results
@@ -321,6 +347,7 @@
       const cam = { x: L.camX(), y: L.camY() };
       L.drawTiles(ctx);
       L.drawPoles(ctx);
+      Pt.drawDecals(ctx, cam);      // blood splats sit on the ground
 
       // hide spots (behind actors), then loot, actors, particles
       for (const s of this.spots) s.draw(ctx, cam);
@@ -443,23 +470,49 @@
       }
     },
 
-    // ---- title --------------------------------------------------------
+    // ---- title: the raccoon in the rain, watching a family he can't have -
     _drawTitle(ctx) {
-      // hero raccoon
-      const hx = VIEW_W / 2, hy = VIEW_H * 0.72;
-      S.shadow(ctx, hx, hy + 2, 30, 0.3);
-      S.raccoon(ctx, hx, hy, { dir: 1, state: "idle", animT: this.time, scale: 2.2, blink: (this.time % 4) < 0.12 });
+      // a dark building facade on the right with one warm lit window
+      const bx = VIEW_W * 0.52, by = 84;
+      ctx.fillStyle = "#141126"; ctx.fillRect(bx - 8, 0, VIEW_W, VIEW_H);
+      // brick texture hint
+      ctx.fillStyle = "#181430";
+      for (let yy = 0; yy < VIEW_H; yy += 8) ctx.fillRect(bx - 8, yy, VIEW_W, 1);
+      // the window
+      const ww = 96, wh = 62, wx = bx + 30, wy = by;
+      ctx.fillStyle = "#0a0812"; ctx.fillRect(wx - 4, wy - 4, ww + 8, wh + 8);      // frame outer
+      ctx.fillStyle = "#2a2038"; ctx.fillRect(wx - 3, wy - 3, ww + 6, wh + 6);
+      S.familyDinner(ctx, wx, wy, ww, wh, this.time);
+      // muntin bars + sill
+      ctx.fillStyle = "#20182c";
+      ctx.fillRect(wx + ww / 2 - 1, wy, 2, wh);
+      ctx.fillRect(wx, wy + wh / 2 - 1, ww, 2);
+      ctx.fillStyle = "#3a2e4c"; ctx.fillRect(wx - 4, wy + wh, ww + 8, 3);
+      // warm light spilling down the wall onto the street
+      const spill = ctx.createLinearGradient(0, wy, 0, VIEW_H);
+      spill.addColorStop(0, "rgba(255,210,140,0.16)"); spill.addColorStop(1, "rgba(255,190,110,0)");
+      ctx.fillStyle = spill; ctx.fillRect(wx - 20, wy, ww + 40, VIEW_H - wy);
+
+      // street + the raccoon dad standing below, looking up longingly
+      const groundY = VIEW_H - 26;
+      ctx.fillStyle = "#20222f"; ctx.fillRect(0, groundY, VIEW_W, VIEW_H - groundY);
+      ctx.fillStyle = "#2c2e40"; ctx.fillRect(0, groundY, VIEW_W, 2);
+      const rx = wx + 6;
+      S.shadow(ctx, rx, groundY + 2, 22, 0.28);
+      this.titleCritter.draw(ctx, rx, groundY, { zoom: 1.5 });
+      // a puddle reflection of the window glow
+      ctx.globalAlpha = 0.12; ctx.fillStyle = "#ffcf7a";
+      ctx.fillRect(rx + 14, groundY + 3, 30, 2); ctx.globalAlpha = 1;
+
       // title
-      ctx.save();
       const bob = Math.sin(this.time * 1.5) * 1;
-      Font.draw(ctx, "BROKE @$$", VIEW_W / 2, 40 + bob, { align: "center", color: P.gold, scale: 3, tracking: 2, shadow: true, shadowColor: "rgba(0,0,0,0.7)" });
-      Font.draw(ctx, "RACCOON", VIEW_W / 2, 70 + bob, { align: "center", color: P.goldHi, scale: 3, tracking: 3, shadow: true, shadowColor: "rgba(0,0,0,0.7)" });
-      Font.draw(ctx, "A NIGHT-TOWN DUMPSTER HEIST", VIEW_W / 2, 96, { align: "center", color: P.textDim, scale: 1, tracking: 1 });
-      ctx.restore();
-      // blinking prompt
-      if ((this.time % 1) < 0.6) Font.draw(ctx, "PRESS  Z  TO START", VIEW_W / 2, VIEW_H - 40, { align: "center", color: P.text, scale: 1, shadow: true });
+      Font.draw(ctx, "BROKE @$$", 20, 22 + bob, { align: "left", color: P.gold, scale: 3, tracking: 2, shadow: true, shadowColor: "rgba(0,0,0,0.8)" });
+      Font.draw(ctx, "RACCOON", 20, 50 + bob, { align: "left", color: P.goldHi, scale: 3, tracking: 3, shadow: true, shadowColor: "rgba(0,0,0,0.8)" });
+      Font.draw(ctx, "ALL HE WANTS IS TO FEED HIS KIDS", 22, 78, { align: "left", color: P.textDim, scale: 1, tracking: 1 });
+
+      // prompt
+      if ((this.time % 1) < 0.6) Font.draw(ctx, "PRESS  Z  /  TAP  TO START", VIEW_W / 2, VIEW_H - 40, { align: "center", color: P.text, scale: 1, shadow: true });
       Font.draw(ctx, "MOVE < >   JUMP Z   CLIMB X   THROW C   HIDE v", VIEW_W / 2, VIEW_H - 20, { align: "center", color: P.textDim, scale: 1 });
-      // rain
       L.drawRain(ctx, 1 / 60);
     },
 
@@ -475,8 +528,9 @@
       const bx = 20, by = VIEW_H - 58, bw = VIEW_W - 40, bh = 42;
       ctx.fillStyle = "rgba(8,8,20,0.9)"; ctx.fillRect(bx, by, bw, bh);
       ctx.fillStyle = "rgba(120,126,180,0.6)"; ctx.fillRect(bx, by, bw, 1); ctx.fillRect(bx, by + bh - 1, bw, 1);
-      // little raccoon portrait
-      S.raccoon(ctx, bx + 20, by + bh - 6, { dir: 1, state: "idle", animT: this.time, scale: 1.4 });
+      // speaker portrait
+      if (who.indexOf("CEDRIC") === 0) S.hedgehog(ctx, bx + 20, by + bh - 6, { dir: 1, wave: true, animT: this.time });
+      else this.portraitCritter.draw(ctx, bx + 20, by + bh - 6, { zoom: 1.25 });
       Font.draw(ctx, who, bx + 40, by + 8, { color: P.gold, scale: 1 });
       // typewriter reveal
       const shown = Math.min(text.length, Math.floor(this.introT * 42));
@@ -508,8 +562,8 @@
       // dad + kids on the pad (until lift-off phase)
       if (this.winPhase < 2) {
         this.player.hidden = false; this.player.dead = false;
-        S.shadow(ctx, this.pad.cx - cam.x, this.pad.topY - cam.y + 1, 14, 0.3);
-        S.raccoon(ctx, this.pad.cx - cam.x, this.pad.topY - cam.y, { dir: 1, state: "idle", animT: this.time });
+        S.shadow(ctx, this.pad.cx - cam.x, this.pad.topY - cam.y + 1, 16, 0.3);
+        this.winDad.draw(ctx, this.pad.cx - cam.x, this.pad.topY - cam.y, {});
         for (const k of (this._winKids || [])) k.draw(ctx, cam);
       }
     },

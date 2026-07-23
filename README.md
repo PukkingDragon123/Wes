@@ -31,11 +31,25 @@ python3 -m http.server 8000
 | Grab & climb walls | hold `X` / `Shift` |
 | Throw / pick up can | `C` |
 | Dive dumpster / hide / drop | `↓` (and `↓`+`Z` to drop through platforms) |
+| Take down a guard | pounce on their head, or bean them with a thrown can |
 | Pause | `Esc` / `P` |
 | Toggle sound | `M` |
 
+**On phones/tablets:** on-screen touch controls appear automatically — a d-pad on
+the left, and CLIMB / THROW / JUMP on the right. Tap the screen to advance menus.
+
 ## ✨ Features
 
+- **Physics-driven characters** — every raccoon and guard is built from five
+  spring-animated body parts (head, torso, arms, legs, and a floppy multi-segment
+  tail) with cute, expressive faces: big tracking eyes, blinks, and mouth
+  expressions that shift with the action.
+- **A story it wears on its sleeve** — the title screen is the raccoon dad out in
+  the rain, watching a happy human family eat dinner through a warm lit window.
+- **Take guards down** — stomp a guard from above or bean one with a thrown can for
+  a stylized pixel-gore takedown (blood spray, ragdoll, splats that stay on the
+  ground). Or just avoid them — your call.
+- **Plays on phones** — automatic on-screen touch controls, tap-to-advance menus.
 - **Bouncy, Celeste-style movement** — variable-height jumps, coyote time, jump
   buffering, wall-slide, wall-jump, and stamina-based wall climbing, with squash &
   stretch and dust on every landing.
@@ -59,7 +73,8 @@ python3 -m http.server 8000
 index.html        canvas + pixel-perfect scaling, loads the modules in order
 js/core.js        namespace, config, math, seeded RNG, input, bitmap pixel font
 js/audio.js       Web Audio music scheduler + SFX + helicopter rotor
-js/sprites.js     parametric pixel-art (raccoon, guards, Cedric, chopper, props)
+js/sprites.js     static pixel-art: props, Cedric, chopper, the human family scene
+js/critter.js     spring-physics characters (raccoon + guard) with expressive faces
 js/particles.js   dust, sparks, noise rings, floating loot text, confetti
 js/level.js       tile grid + collision, camera, parallax city, lighting, layout
 js/player.js      the raccoon — momentum movement, wall mechanics, squash/stretch

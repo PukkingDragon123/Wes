@@ -42,6 +42,25 @@
     position:fixed; inset:0; z-index:20; display:none; align-items:center; justify-content:center;
     background:#06060b; color:#9aa; text-align:center; padding:24px; font-size:14px;
   }
+  /* ---- on-screen touch controls (shown only on touch devices) ---- */
+  #touch{ display:none; position:fixed; inset:0; z-index:8; pointer-events:none;
+    justify-content:space-between; align-items:flex-end; padding:16px 18px 20px; }
+  body.touch #touch{ display:flex; }
+  #touch .tbtn{ pointer-events:auto; -webkit-tap-highlight-color:transparent; touch-action:none;
+    font:700 11px ui-monospace,Menlo,Consolas,monospace; letter-spacing:.04em;
+    color:#e6e8f6; background:rgba(30,28,54,.42); border:2px solid rgba(150,156,200,.35);
+    border-radius:16px; display:flex; align-items:center; justify-content:center;
+    width:60px; height:60px; user-select:none; backdrop-filter:blur(2px); }
+  #touch .tbtn.act{ background:rgba(120,110,190,.6); border-color:#b7b1e0; transform:scale(.94); }
+  #touch .dpad{ display:grid; grid-template-columns:repeat(3,58px); grid-template-rows:repeat(2,58px);
+    gap:8px; grid-template-areas:". up ." "lf dn rt"; }
+  #touch .up{grid-area:up} #touch .lf{grid-area:lf} #touch .dn{grid-area:dn} #touch .rt{grid-area:rt}
+  #touch .dpad .tbtn{ font-size:18px; }
+  #touch .acts{ display:grid; grid-template-columns:repeat(2,64px); grid-template-rows:repeat(2,64px);
+    gap:10px; grid-template-areas:"climb throw" "jump jump"; align-items:end; }
+  #touch .climb{grid-area:climb} #touch .throw{grid-area:throw}
+  #touch .jump{grid-area:jump; width:auto; height:60px; background:rgba(90,70,150,.5); border-color:#b7b1e0; }
+  body.touch #hint{ display:none; }
 </style>
 </head>
 <body>
@@ -51,10 +70,25 @@
   <div id="hint">Move <b>← →</b> · Jump <b>Z</b> · Climb <b>X</b> · Throw/Grab <b>C</b> · Hide/Dive <b>↓</b> · Pause <b>Esc</b></div>
   <div id="rotate">Rotate your device to landscape 🦝</div>
 
+  <div id="touch" aria-hidden="true">
+    <div class="dpad">
+      <button class="tbtn up" data-k="ArrowUp">▲</button>
+      <button class="tbtn lf" data-k="ArrowLeft">◀</button>
+      <button class="tbtn dn" data-k="ArrowDown">▼</button>
+      <button class="tbtn rt" data-k="ArrowRight">▶</button>
+    </div>
+    <div class="acts">
+      <button class="tbtn climb" data-k="KeyX">CLIMB</button>
+      <button class="tbtn throw" data-k="KeyC">THROW</button>
+      <button class="tbtn jump" data-k="KeyZ">JUMP</button>
+    </div>
+  </div>
+
   <!-- Load order matters: each file augments the global RC namespace -->
   <script src="js/core.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/sprites.js"></script>
+  <script src="js/critter.js"></script>
   <script src="js/particles.js"></script>
   <script src="js/level.js"></script>
   <script src="js/player.js"></script>

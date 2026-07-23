@@ -44,6 +44,8 @@
     this.dead = false; this.exiting = false;
     this.faceLockT = 0;
     this.jumpHeld = false;
+    this.expr = "neutral";
+    this.critter = new RC.Critter("raccoon");
   }
 
   Player.prototype.center = function () { return { x: this.x + this.w / 2, y: this.y + this.h / 2 }; };
@@ -125,6 +127,7 @@
 
     if (this.hidden || this.dead || this.exiting) {
       this._easeScale(dt);
+      this._updateCritter(dt);
       return;
     }
 
@@ -233,6 +236,19 @@
 
     this._easeScale(dt);
     this._pickState(ax, ay);
+    this._updateCritter(dt);
+  };
+
+  Player.prototype._updateCritter = function (dt) {
+    let expr = this.expr;
+    if (this.dead) expr = "scared";
+    else if (this.state === "climb" || this.state === "wall") expr = "determined";
+    const lookY = this.vy > 80 ? 0.5 : (this.vy < -80 ? -0.4 : 0);
+    this.critter.update(dt, {
+      vx: this.vx, vy: this.vy, grounded: this.grounded, dir: this.dir,
+      state: this.dead ? "hurt" : this.state, carry: this.carry, throwT: this.throwT,
+      expr: expr, look: { x: this.dir * 0.4, y: lookY }, blink: this.blink,
+    });
   };
 
   Player.prototype._jump = function () {
@@ -301,12 +317,8 @@
     if (this.hidden) return;             // the hide-spot wobble is drawn instead
     const x = this.cx() - cam.x;
     const y = this.feetY() - cam.y;
-    if (!this.dead) RC.Sprites.shadow(ctx, x, this.feetY() - cam.y + 1, this.w + 4, this.grounded ? 0.3 : 0.16);
-    RC.Sprites.raccoon(ctx, x, y, {
-      dir: this.dir, state: this.dead ? "hurt" : this.state, animT: this.animT,
-      sx: this.sx, sy: this.sy, blink: this.blink,
-      carry: this.carry, throwT: this.throwT,
-    });
+    if (!this.dead) RC.Sprites.shadow(ctx, x, this.feetY() - cam.y + 1, this.w + 6, this.grounded ? 0.3 : 0.16);
+    this.critter.draw(ctx, x, y, { sx: this.sx, sy: this.sy });
   };
 
   RC.Player = Player;

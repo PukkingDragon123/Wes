@@ -154,6 +154,30 @@
       this.poll(); this.poll();
     },
 
+    // on-screen buttons for touch devices
+    initTouch() {
+      const isTouch = ("ontouchstart" in global) || (navigator && navigator.maxTouchPoints > 0) || global.innerWidth < 820;
+      if (isTouch) document.body.classList.add("touch");
+      const pad = document.getElementById("touch");
+      if (!pad) return;
+      const self = this;
+      pad.querySelectorAll("[data-k]").forEach((b) => {
+        const code = b.getAttribute("data-k");
+        const on = (e) => { e.preventDefault(); self.raw[code] = true; self._anyRaw = true; b.classList.add("act"); };
+        const off = (e) => { if (e) e.preventDefault(); self.raw[code] = false; b.classList.remove("act"); };
+        b.addEventListener("pointerdown", on);
+        b.addEventListener("pointerup", off);
+        b.addEventListener("pointercancel", off);
+        b.addEventListener("pointerleave", off);
+        b.addEventListener("lostpointercapture", off);
+      });
+    },
+    // briefly assert a key (used for tap-to-advance menus)
+    pulse(code, ms) {
+      this.raw[code] = true; this._anyRaw = true;
+      setTimeout(() => { this.raw[code] = false; }, ms || 120);
+    },
+
     _anyOf(codes) { for (let i = 0; i < codes.length; i++) if (this.raw[codes[i]]) return true; return false; },
 
     // Called once per rendered frame, before update logic.

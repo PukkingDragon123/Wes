@@ -12,8 +12,10 @@
   const Particles = RC.Particles = {
     pool: [],
     max: 600,
+    decals: [],          // persistent ground splats (blood, etc.)
+    maxDecals: 160,
 
-    reset() { this.pool.length = 0; },
+    reset() { this.pool.length = 0; this.decals.length = 0; },
 
     _get() {
       for (let i = 0; i < this.pool.length; i++) if (this.pool[i].dead) return this.pool[i];
@@ -105,6 +107,48 @@
         g: 0, drag: 0.9, life: 0.25, size: 1, color: color || "#9aa0bd" });
     },
 
+    // stylized pixel gore: a spray of red droplets that fling out and fall
+    blood(x, y, dir, amount) {
+      const n = amount || 16;
+      const reds = ["#c81e2a", "#8f1420", "#e64350", "#6e0e18"];
+      for (let i = 0; i < n; i++) {
+        const a = (dir ? (dir > 0 ? -0.2 : Math.PI + 0.2) : -Math.PI / 2) + (RC.rng() - 0.5) * 2.2;
+        const sp = 40 + RC.rng() * 150;
+        this.emit({
+          kind: "blood", x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 40,
+          g: 340, drag: 0.99, life: 0.5 + RC.rng() * 0.5, size: 1 + (RC.rng() < 0.45 ? 1 : 0),
+          color: reds[(RC.rng() * reds.length) | 0], fade: false,
+        });
+      }
+      // a quick puff of dark mist
+      for (let i = 0; i < 5; i++)
+        this.emit({ kind: "dust", x, y: y - 2, vx: (RC.rng() - 0.5) * 40, vy: -RC.rng() * 40,
+          g: 60, drag: 0.9, life: 0.4, size: 2, color: "#5a0e16" });
+    },
+
+    // a lasting splat on the ground
+    decal(x, y, size, color) {
+      this.decals.push({ x, y, size: size || 3, color: color || "#7a1019", a: 0.85 });
+      if (this.decals.length > this.maxDecals) this.decals.shift();
+    },
+    bloodPool(x, y) {
+      const reds = ["#7a1019", "#5e0c14", "#8f1420"];
+      for (let i = 0; i < 5; i++)
+        this.decal(x + (RC.rng() - 0.5) * 14, y - RC.rng() * 2, 2 + RC.rng() * 3, reds[(RC.rng() * reds.length) | 0]);
+    },
+
+    drawDecals(ctx, cam) {
+      for (let i = 0; i < this.decals.length; i++) {
+        const d = this.decals[i];
+        ctx.globalAlpha = d.a;
+        ctx.fillStyle = d.color;
+        const s = Math.round(d.size);
+        ctx.fillRect(Math.round(d.x - cam.x - s / 2), Math.round(d.y - cam.y - 1), s, 2);
+        if (s > 3) ctx.fillRect(Math.round(d.x - cam.x - 1), Math.round(d.y - cam.y - 2), 2, 3);
+      }
+      ctx.globalAlpha = 1;
+    },
+
     update(dt) {
       const pool = this.pool;
       for (let i = 0; i < pool.length; i++) {
@@ -148,6 +192,12 @@
           case "spark": {
             ctx.fillStyle = p.color;
             ctx.fillRect(x, y, p.size + (t < 0.5 ? 1 : 0), p.size + (t < 0.5 ? 1 : 0));
+            break;
+          }
+          case "blood": {
+            ctx.globalAlpha = t > 0.8 ? (1 - t) / 0.2 : 1;
+            ctx.fillStyle = p.color;
+            ctx.fillRect(x, y, p.size, p.size);
             break;
           }
           default: { // dust

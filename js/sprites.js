@@ -479,6 +479,83 @@
       if (((t || 0) * 2 + x) % 3 < 0.06) { /* handled by particles usually */ }
     },
 
+    // crisp pixel disc
+    _disc(ctx, cx, cy, r, color) {
+      ctx.fillStyle = color;
+      for (let dy = -Math.ceil(r); dy <= Math.ceil(r); dy++) {
+        const w = Math.round(Math.sqrt(Math.max(0, r * r - dy * dy)));
+        ctx.fillRect(Math.round(cx - w), Math.round(cy + dy), 2 * w + 1, 1);
+      }
+    },
+
+    // a single cartoony seated human (upper body behind a table)
+    _diner(ctx, cx, baseY, o) {
+      const w = o.big ? 8 : 6, hr = o.big ? 3.6 : 2.9;
+      const raise = (Math.sin(o.t * 2.2 + o.ph) > 0.55) ? -2 : 0;
+      // torso
+      ctx.fillStyle = o.shirt; ctx.fillRect(Math.round(cx - w / 2), baseY - 7, w, 7);
+      ctx.fillStyle = "rgba(255,255,255,0.14)"; ctx.fillRect(Math.round(cx - w / 2), baseY - 7, w, 1);
+      // arms (one lifts a forkful to the mouth)
+      ctx.fillStyle = o.skin;
+      ctx.fillRect(Math.round(cx - w / 2 - 1), baseY - 6, 2, 4);
+      ctx.fillRect(Math.round(cx + w / 2 - 1), baseY - 6 + raise, 2, 4 - raise);
+      // head
+      const hy = baseY - 8 - hr;
+      this._disc(ctx, cx, hy, hr, o.skin);
+      // hair
+      ctx.fillStyle = o.hair;
+      ctx.fillRect(Math.round(cx - hr - 0.5), Math.round(hy - hr), Math.round(hr * 2 + 1), Math.round(hr));
+      if (o.big) ctx.fillRect(Math.round(cx - hr - 0.5), Math.round(hy - hr), 1, Math.round(hr + 1));
+      // happy face
+      ctx.fillStyle = "#2a1710";
+      ctx.fillRect(Math.round(cx - 1.6), Math.round(hy - 0.2), 1, 1);
+      ctx.fillRect(Math.round(cx + 0.9), Math.round(hy - 0.2), 1, 1);
+      ctx.fillRect(Math.round(cx - 1), Math.round(hy + 1.4), 2, 1);   // smile
+      ctx.fillRect(Math.round(cx - 2), Math.round(hy + 1), 1, 1);
+      ctx.fillRect(Math.round(cx + 1), Math.round(hy + 1), 1, 1);
+    },
+
+    // the whole warm family-dinner tableau, drawn inside a window rect
+    familyDinner(ctx, x, y, w, h, t) {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+      // warm back wall
+      const gr = ctx.createLinearGradient(0, y, 0, y + h);
+      gr.addColorStop(0, "#6a4a30"); gr.addColorStop(1, "#3a2818");
+      ctx.fillStyle = gr; ctx.fillRect(x, y, w, h);
+      // framed picture on the wall
+      ctx.fillStyle = "#7a5638"; ctx.fillRect(x + 8, y + 8, 10, 8);
+      ctx.fillStyle = "#9fd0e0"; ctx.fillRect(x + 9, y + 9, 8, 6);
+      // pendant lamp + warm pool
+      const lx = Math.round(x + w / 2), ly = y + 7;
+      ctx.strokeStyle = "#2a1e12"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(lx + 0.5, y); ctx.lineTo(lx + 0.5, ly); ctx.stroke();
+      const lg = ctx.createRadialGradient(lx, ly + 5, 2, lx, ly + 5, w * 0.62);
+      lg.addColorStop(0, "rgba(255,224,150,0.6)"); lg.addColorStop(1, "rgba(255,205,120,0)");
+      ctx.fillStyle = lg; ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = "#3a2a18"; ctx.fillRect(lx - 3, ly - 1, 6, 2);
+      ctx.fillStyle = "#ffe6a0"; ctx.fillRect(lx - 2, ly + 1, 4, 3);
+      ctx.fillStyle = "#fff6d0"; ctx.fillRect(lx - 1, ly + 2, 2, 2);
+      // table
+      const ty = y + h - 9;
+      ctx.fillStyle = "#4a3120"; ctx.fillRect(x + 5, ty, w - 10, 9);
+      ctx.fillStyle = "#5e4028"; ctx.fillRect(x + 5, ty, w - 10, 1);
+      // seated family
+      const sY = ty + 3;
+      this._diner(ctx, x + w * 0.30, sY, { skin: "#d99a72", shirt: "#9a4a4a", hair: "#33241a", big: true, t, ph: 0.0 });
+      this._diner(ctx, x + w * 0.70, sY, { skin: "#f0c19c", shirt: "#4a6f95", hair: "#7a4e28", big: true, t, ph: 1.4 });
+      this._diner(ctx, x + w * 0.46, sY + 2, { skin: "#e7b189", shirt: "#6f9a4a", hair: "#241a12", big: false, t, ph: 2.2 });
+      this._diner(ctx, x + w * 0.60, sY + 2, { skin: "#f2c8a4", shirt: "#b98a3a", hair: "#4a2e18", big: false, t, ph: 0.8 });
+      // plates + steam
+      ctx.fillStyle = "#e6e0ce";
+      [0.34, 0.66, 0.5].forEach((f) => ctx.fillRect(Math.round(x + w * f - 3), ty - 1, 6, 1));
+      ctx.fillStyle = "rgba(255,240,210,0.35)";
+      const s1 = Math.sin(t * 3) * 1;
+      ctx.fillRect(Math.round(x + w * 0.5 + s1), ty - 4, 1, 2);
+      ctx.fillRect(Math.round(x + w * 0.34 - s1), ty - 3, 1, 2);
+      ctx.restore();
+    },
+
     // a small heart/kid icon for HUD
     heart(ctx, x, y, full) {
       const p = new Painter(ctx, x, y, 1);

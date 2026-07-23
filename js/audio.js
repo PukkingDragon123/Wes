@@ -133,6 +133,10 @@
           this._noise(t, 0.4, 0.2, this.sfxBus, 600); break;
         case "bad":
           this._blip(150, t, 0.18, "square", 0.14, this.sfxBus, 90); break;
+        case "splat":
+          this._noise(t, 0.14, 0.34, this.sfxBus, 1400, "lowpass");
+          this._blip(140, t, 0.12, "sawtooth", 0.16, this.sfxBus, 60);
+          this._noise(t + 0.02, 0.2, 0.16, this.sfxBus, 700); break;
         case "select":
           this._blip(520, t, 0.06, "square", 0.09, this.sfxBus); break;
         case "confirm":

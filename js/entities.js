@@ -27,12 +27,14 @@
     this.dir = def.dir || 1;
     this.range = def.range || 100;
     this.fov = def.fov || 0.5;
+    this.critter = new RC.Critter("guard");
     this.reset();
   }
   Guard.prototype.reset = function () {
     this.x = this.homeX; this.alert = 0; this.grace = 0; this.seeing = false;
     this.state = "patrol"; this.turnT = 0; this.searchT = 0; this.lookT = 0;
     this.animT = 0; this.moving = false; this.lastX = this.homeX; this.lastY = this.y;
+    this.dead = false; this.deadT = 0; this.knockDir = 1;
   };
   Guard.prototype.eyeX = function () { return this.x + this.dir * 5; };
   Guard.prototype.eyeY = function () { return this.y - 13; };
@@ -49,7 +51,7 @@
   };
 
   Guard.prototype.canSee = function (pl) {
-    if (pl.hidden || pl.dead) return 0;
+    if (this.dead || pl.hidden || pl.dead) return 0;
     const ex = this.eyeX(), ey = this.eyeY();
     const px = pl.cx(), py = pl.cy();
     const dx = px - ex, dy = py - ey, dist = Math.hypot(dx, dy);
@@ -64,7 +66,18 @@
     return (0.35 + 0.65 * bright) * (0.4 + 0.6 * distF) * (0.5 + 0.5 * angF);
   };
 
+  Guard.prototype.die = function (fromDir) {
+    if (this.dead) return;
+    this.dead = true; this.deadT = 0; this.alert = 0; this.seeing = false;
+    this.knockDir = fromDir || this.dir;
+    Pt().blood(this.x, this.y - 13, this.knockDir, 22);
+    Pt().bloodPool(this.x, this.y);
+    A().play("splat"); A().play("caught");
+    L().shake(3.4, 0.28);
+  };
+
   Guard.prototype.hearNoise = function (x, y, r) {
+    if (this.dead) return;
     const d = Math.hypot(x - this.x, y - this.y);
     if (d > r) return;
     this.lastX = x; this.lastY = y;
@@ -88,6 +101,11 @@
 
   Guard.prototype.update = function (dt, pl, game) {
     this.animT += dt;
+    if (this.dead) {
+      this.deadT += dt;
+      this.critter.update(dt, { grounded: true, vx: 0, state: "idle", dir: this.dir });
+      return;
+    }
     const prevAlert = this.alert;
 
     const s = this.canSee(pl);
@@ -123,9 +141,15 @@
       else { this.moving = this._walk(this.dir, 34, dt, true); }
       this.searchT = 0;
     }
+    const speed = this.state === "alert" ? 78 : (this.state === "investigate" ? 52 : 34);
+    this.critter.update(dt, {
+      vx: this.moving ? this.dir * speed : 0, vy: 0, grounded: true, dir: this.dir,
+      state: this.moving ? "patrol" : "idle", expr: this.alert >= SPOT_BUBBLE ? "alert" : "neutral",
+    });
   };
 
   Guard.prototype.drawCone = function (ctx, cam) {
+    if (this.dead) return;
     const ex = this.eyeX() - cam.x, ey = this.eyeY() - cam.y;
     const fa = this.faceAngle();
     const R = this.range;
@@ -156,12 +180,18 @@
 
   Guard.prototype.draw = function (ctx, cam) {
     const x = Math.round(this.x - cam.x), y = Math.round(this.y - cam.y);
+    if (this.dead) {
+      const rot = Math.min(1, this.deadT * 4) * (this.knockDir > 0 ? Math.PI / 2 : -Math.PI / 2);
+      const slide = this.knockDir * Math.min(7, this.deadT * 22);
+      S().shadow(ctx, x + slide, y + 1, 18, 0.32);
+      this.critter.draw(ctx, x + slide, y, { rot: rot });
+      return;
+    }
     S().shadow(ctx, x, y + 1, 12, 0.28);
-    const st = this.state === "alert" ? "alert" : (this.moving ? "patrol" : "idle");
-    S().guard(ctx, x, y, { dir: this.dir, state: st, animT: this.animT });
+    this.critter.draw(ctx, x, y, {});
     // alert bubble
-    if (this.alert >= SPOT_BUBBLE) this._bubble(ctx, x, y - 30, "!", P.bad);
-    else if (this.alert >= SUSP) this._bubble(ctx, x, y - 30, "?", P.detect);
+    if (this.alert >= SPOT_BUBBLE) this._bubble(ctx, x, y - 32, "!", P.bad);
+    else if (this.alert >= SUSP) this._bubble(ctx, x, y - 32, "?", P.detect);
   };
   Guard.prototype._bubble = function (ctx, x, y, ch, color) {
     const bob = Math.sin(this.animT * 8) * 1;
@@ -178,6 +208,14 @@
     this.vx = o.vx; this.vy = o.vy; this.rot = 0; this.dead = false; this.landed = false;
   }
   Throwable.prototype.update = function (dt, game) {
+    // a direct hit on a guard takes them down (gore)
+    for (const g of game.guards) {
+      if (!g.dead && Math.abs(g.x - this.x) < 9 && Math.abs((g.y - 13) - this.y) < 13) {
+        g.die(this.vx >= 0 ? 1 : -1);
+        this.dead = true; Pt().ring(this.x, this.y, P.bad, 46);
+        return;
+      }
+    }
     this.vy += 900 * dt;
     this.rot += this.vx * dt * 0.4;
     // move with simple collision (5x5 box)
@@ -344,18 +382,25 @@
   /* ======================================================================
      KID — a little raccoon (motivation + ending)
   ====================================================================== */
-  function Kid(o) { this.x = o.x; this.y = o.y; this.dir = o.dir || 1; this.animT = RC.rng() * 3; this.hop = 0; this.wait = RC.rng() * 2; }
+  function Kid(o) {
+    this.x = o.x; this.y = o.y; this.dir = o.dir || 1; this.animT = RC.rng() * 3; this.hop = 0; this.wait = RC.rng() * 2;
+    this.critter = new RC.Critter("raccoon", { scale: 0.62 });
+  }
   Kid.prototype.update = function (dt) {
     this.animT += dt; this.wait -= dt;
     if (this.wait <= 0) { this.hop = 0.4; this.wait = 1.5 + RC.rng() * 2.5; }
     if (this.hop > 0) this.hop -= dt;
+    this.critter.update(dt, {
+      grounded: this.hop <= 0, vx: 0, vy: this.hop > 0 ? -60 : 0, dir: this.dir,
+      state: this.hop > 0 ? "jump" : "idle", expr: "happy", look: { x: this.dir * 0.3, y: 0 },
+    });
   };
   Kid.prototype.draw = function (ctx, cam) {
     const x = Math.round(this.x - cam.x);
     const yoff = this.hop > 0 ? -Math.sin((0.4 - this.hop) / 0.4 * Math.PI) * 5 : 0;
     const y = Math.round(this.y - cam.y + yoff);
     S().shadow(ctx, x, Math.round(this.y - cam.y + 1), 9, 0.25);
-    S().kid(ctx, x, y, { dir: this.dir, state: this.hop > 0 ? "jump" : "idle", animT: this.animT, blink: (this.animT % 4) < 0.12 });
+    this.critter.draw(ctx, x, y, {});
   };
 
   Ent.Guard = Guard;
