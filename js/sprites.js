@@ -441,6 +441,58 @@
       });
     },
 
+    // the raccoon family's alley den — a cozy cardboard home
+    den(ctx, x, yBottom, t) {
+      const p = new S.Painter(ctx, Math.round(x), Math.round(yBottom), 1);
+      // warm rug the kits sit on
+      p.r(-40, -1, 78, 2, "#6a3b4a"); p.r(-40, -1, 78, 1, "#8a4b5a");
+      for (let i = -36; i < 36; i += 8) p.r(i, -1, 3, 1, "#9a5b6a");
+      // cardboard box home (left)
+      p.r(-64, -28, 30, 28, "#7a5a38"); p.r(-64, -28, 30, 1, "#9a7a4a");
+      p.r(-64, -1, 30, 1, "#4a3418"); p.r(-64, -28, 1, 28, "#9a7a4a"); p.r(-35, -28, 1, 28, "#4a3418");
+      p.r(-64, -14, 30, 1, "#4a3418");                         // tape seam
+      p.r(-58, -22, 16, 21, "#241a10");                        // dark doorway
+      p.r(-56, -8, 12, 6, "#4a3a5a"); p.r(-56, -8, 12, 1, "#6a5a7a"); // little bed/blanket
+      // two tiny sleepy eye glints inside sometimes
+      // flap roof
+      p.r(-66, -30, 20, 3, "#8a6a44"); p.r(-66, -30, 20, 1, "#a98a5a");
+      // string of warm bulbs across the top
+      const bulbs = ["#ffd27a", "#ff9aa5", "#8fd6ff", "#b6f28a"];
+      ctx.strokeStyle = "#2a2740"; ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let i = 0; i <= 8; i++) { const bx = x - 44 + i * 12, by = yBottom - 34 + Math.sin(i * 0.9) * 3; if (i === 0) ctx.moveTo(bx, by); else ctx.lineTo(bx, by); }
+      ctx.stroke();
+      for (let i = 0; i <= 8; i++) {
+        const bx = Math.round(x - 44 + i * 12), by = Math.round(yBottom - 34 + Math.sin(i * 0.9) * 3) + 1;
+        const tw = 0.6 + 0.4 * Math.sin((t || 0) * 3 + i);
+        ctx.globalAlpha = tw; ctx.fillStyle = bulbs[i % bulbs.length];
+        ctx.fillRect(bx, by, 2, 2); ctx.globalAlpha = 1;
+      }
+    },
+
+    // home cooking stove (oil-drum + pot + fire)
+    stove(ctx, x, yBottom, t, ready) {
+      const p = new S.Painter(ctx, Math.round(x), Math.round(yBottom), 1);
+      p.r(-8, -15, 16, 15, "#3b3550"); p.r(-8, -15, 16, 1, "#54506e"); p.r(-8, -2, 16, 2, "#221f34");
+      p.r(-8, -15, 1, 15, "#2a2740"); p.r(7, -15, 1, 15, "#2a2740");
+      for (let i = -6; i <= 6; i += 4) p.r(i, -13, 1, 1, "#6a6494");
+      // fire mouth
+      p.r(-5, -6, 10, 4, "#120a06");
+      const f = Math.round(Math.sin(t * 12)), f2 = Math.round(Math.sin(t * 17 + 1));
+      p.r(-4, -6 + f, 3, 3, "#ff8a2a"); p.r(0, -7 + f2, 3, 4, "#ffd24a"); p.r(3, -6 + f, 2, 3, "#ff6a1a");
+      p.r(-1, -8 + f2, 2, 3, "#fff2a0");
+      // pot
+      p.r(-7, -20, 14, 5, "#4a4a55"); p.r(-7, -20, 14, 1, "#6a6a7a");
+      p.r(-9, -20, 2, 2, "#3a3a45"); p.r(7, -20, 2, 2, "#3a3a45");
+      p.r(-6, -21, 12, 1, "#2a2a33");
+      if (ready) {
+        for (let i = 0; i < 3; i++) { const sy = Math.round(-22 - ((t * 10 + i * 3) % 8)); p.r(-3 + i * 3, sy, 1, 2, "rgba(230,230,244,0.5)"); }
+        const gl = ctx.createRadialGradient(x, yBottom - 10, 2, x, yBottom - 10, 22);
+        gl.addColorStop(0, "rgba(255,180,90,0.25)"); gl.addColorStop(1, "rgba(255,180,90,0)");
+        ctx.fillStyle = gl; ctx.fillRect(x - 22, yBottom - 32, 44, 40);
+      }
+    },
+
     // small loot / throwable icons used both in world and in paws --------
     throwableIcon(p, x, y, type) {
       const F = P;

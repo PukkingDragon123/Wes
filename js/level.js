@@ -91,8 +91,10 @@
       this.spawns.push({ type: "kid", x: cx(7), y: surf(g) });
       light(9, g, 44);
       this.spawns.push({ type: "hint", x: cx(6), y: surf(g) - 30, text: "ARROWS MOVE   Z JUMP" });
-      this.spawns.push({ type: "dumpster", x: cx(13), y: surf(g), loot: 2 });
-      this.spawns.push({ type: "hint", x: cx(13), y: surf(g) - 34, text: "PRESS DOWN: DIVE / HIDE" });
+      this.spawns.push({ type: "stove", x: cx(10), y: surf(g) });
+      this.spawns.push({ type: "hint", x: cx(10), y: surf(g) - 42, text: "COOK HERE (C) WHEN A DISH IS READY" });
+      this.spawns.push({ type: "dumpster", x: cx(14), y: surf(g), ingredients: ["bread", "cheese"] });
+      this.spawns.push({ type: "hint", x: cx(14), y: surf(g) - 34, text: "PRESS DOWN: DIVE FOR FOOD" });
       this.spawns.push({ type: "crate", x: cx(18), y: surf(g), size: 16 });
       this.spawns.push({ type: "coin", x: cx(18), y: surf(g) - 22 });
       this.spawns.push({ type: "can", x: cx(21), y: surf(g) - 4 });
@@ -107,13 +109,13 @@
       this.spawns.push({ type: "hint", x: cx(35), y: surf(14) - 14, text: "KEEP OUT OF THE LIGHT CONES" });
       this.spawns.push({ type: "crate", x: cx(37), y: surf(14), size: 16 });
       this.spawns.push({ type: "coin", x: cx(43), y: surf(14) - 6 });
-      this.spawns.push({ type: "food", x: cx(45), y: surf(14) - 6 });
+      this.spawns.push({ type: "ing", ing: "apple", x: cx(45), y: surf(14) - 6 });
       this.guardsDef.push({ x: cx(41), y: surf(14), min: cx(35), max: cx(46), dir: 1, range: 92, fov: 0.5 });
 
       // alley A1 (dumpster below), bridged so you can run across or drop in
       plat(48, 50, 14);
       light(49, g, 40);
-      this.spawns.push({ type: "dumpster", x: cx(49), y: surf(g), loot: 3 });
+      this.spawns.push({ type: "dumpster", x: cx(49), y: surf(g), ingredients: ["meat", "fish"] });
       this.spawns.push({ type: "hint", x: cx(49), y: surf(14) - 12, text: "DOWN+JUMP DROPS THROUGH" });
 
       // ---- rooftop R2 ----
@@ -127,28 +129,30 @@
       building(85, 99, 13);                       // right frame of the courtyard
       this.spawns.push({ type: "checkpoint", x: cx(67), y: surf(g) });
       light(70, g, 46); light(80, g, 46);
-      this.spawns.push({ type: "dumpster", x: cx(72), y: surf(g), loot: 3 });
-      this.spawns.push({ type: "dumpster", x: cx(82), y: surf(g), loot: 2 });
+      this.spawns.push({ type: "dumpster", x: cx(72), y: surf(g), ingredients: ["tomato", "noodle", "cheese"] });
+      this.spawns.push({ type: "dumpster", x: cx(82), y: surf(g), ingredients: ["egg", "cheese"] });
       this.spawns.push({ type: "crate", x: cx(77), y: surf(g), size: 16 });
       this.spawns.push({ type: "crate", x: cx(77), y: surf(g) - 16, size: 16 });
       this.spawns.push({ type: "can", x: cx(68), y: surf(g) - 4 });
       this.spawns.push({ type: "coin", x: cx(75), y: surf(g) - 4 });
-      this.spawns.push({ type: "food", x: cx(83), y: surf(g) - 4 });
+      this.spawns.push({ type: "ing", ing: "egg", x: cx(83), y: surf(g) - 4 });
       this.spawns.push({ type: "hint", x: cx(69), y: surf(g) - 30, text: "THROW CANS (C) TO DISTRACT GUARDS" });
       plat(81, 84, 20); plat(81, 84, 16); plat(81, 84, 13);  // fire-escape stair out to R3 (flush to roof)
-      this.guardsDef.push({ x: cx(74), y: surf(g), min: cx(67), max: cx(83), dir: 1, range: 105, fov: 0.5 });
-      this.guardsDef.push({ x: cx(80), y: surf(g), min: cx(72), max: cx(84), dir: -1, range: 100, fov: 0.5 });
+      this.guardsDef.push({ x: cx(74), y: surf(g), min: cx(67), max: cx(83), dir: 1, range: 108, fov: 0.55 });
+      this.guardsDef.push({ x: cx(80), y: surf(g), min: cx(72), max: cx(84), dir: -1, range: 104, fov: 0.55 });
+      this.guardsDef.push({ type: "dog", x: cx(78), y: surf(g), min: cx(67), max: cx(84), dir: -1, scent: 44, range: 66 });
 
       // ---- rooftop R3 ----
       this.spawns.push({ type: "coin", x: cx(88), y: surf(13) - 6 });
       this.spawns.push({ type: "crate", x: cx(90), y: surf(13), size: 16 });
-      this.spawns.push({ type: "food", x: cx(96), y: surf(13) - 6 });
+      this.spawns.push({ type: "ing", ing: "fish", x: cx(96), y: surf(13) - 6 });
       this.guardsDef.push({ x: cx(92), y: surf(13), min: cx(86), max: cx(98), dir: 1, range: 100, fov: 0.5 });
+      this.guardsDef.push({ type: "searchlight", x: cx(92), y: surf(2), range: 200, center: Math.PI / 2, amp: 0.62, speed: 1.05, width: 0.22 });
 
       // alley A2
       plat(100, 102, 13);
       light(101, g, 40);
-      this.spawns.push({ type: "dumpster", x: cx(101), y: surf(g), loot: 2 });
+      this.spawns.push({ type: "dumpster", x: cx(101), y: surf(g), ingredients: ["meat", "tomato", "noodle"] });
 
       // ---- rooftop R4 ----
       building(103, 116, 12);
@@ -160,13 +164,12 @@
       // ============ ZONE E — extraction tower ===========================
       building(117, 132, 8);
       plat(114, 117, 10); plat(114, 117, 8);       // footholds flush onto the tower roof
-      this.spawns.push({ type: "hint", x: cx(118), y: surf(8) - 14, text: "CLIMB TO THE PAD" });
+      this.spawns.push({ type: "hint", x: cx(118), y: surf(8) - 14, text: "SPARE FOOD UP TOP" });
       this.spawns.push({ type: "coin", x: cx(121), y: surf(8) - 6 });
-      this.spawns.push({ type: "food", x: cx(126), y: surf(8) - 6 });
-      this.spawns.push({ type: "coin", x: cx(129), y: surf(8) - 6 });
+      this.spawns.push({ type: "ing", ing: "tomato", x: cx(126), y: surf(8) - 6 });
+      this.spawns.push({ type: "ing", ing: "meat", x: cx(129), y: surf(8) - 6 });
       light(131, 8, 30);
-      this.spawns.push({ type: "pickup", x: cx(124), y: surf(8) });
-      this.spawns.push({ type: "hint", x: cx(124), y: surf(8) - 20, text: "REACH THE PAD — CEDRIC IS COMING" });
+      this.spawns.push({ type: "hint", x: cx(124), y: surf(8) - 20, text: "GOT WHAT YOU NEED? HEAD HOME TO COOK" });
       // a couple of decorative shorter roofs trailing off to the right edge
       building(136, 143, 16); building(147, 156, 18);
 

@@ -1,10 +1,10 @@
 # 🦝 BROKE @$$ RACCOON
 
-A polished 2D pixel-art **stealth platformer**. You're a broke raccoon dad — your
-wife left, and three hungry kits are counting on you. Slip through the night-town
-rooftops and alleys, dive dumpsters for cash and food, dodge the security guards,
-and reach the rooftop pad where your buddy **Cedric the Hedgehog** is bringing the
-rescue chopper at dawn.
+A polished 2D pixel-art **stealth platformer with cooking**. You're a broke raccoon
+dad — your wife left, and three hungry kits are counting on you. Each night: leave
+the den, sneak through the night-town rooftops and alleys, **dive dumpsters** to dig
+up ingredients, dodge the guards (and their dog, and the searchlights), haul the
+food **home**, and **cook** each kit the dish they're craving before sunrise.
 
 Everything is hand-built and **100% self-contained** — no engine, no assets, no
 network. All pixel art is drawn in code and all music/SFX are synthesized live with
@@ -32,11 +32,36 @@ python3 -m http.server 8000
 | Throw / pick up can | `C` |
 | Dive dumpster / hide / drop | `↓` (and `↓`+`Z` to drop through platforms) |
 | Take down a guard | pounce on their head, or bean them with a thrown can |
+| Dive a dumpster / hide | `↓` |
+| Cook at the home stove | `C` / `E` (when a dish is ready) |
+| Mini-games | move to aim · `Z` to dig / drop · `X` to leave |
 | Pause | `Esc` / `P` |
 | Toggle sound | `M` |
 
 **On phones/tablets:** on-screen touch controls appear automatically — a d-pad on
 the left, and CLIMB / THROW / JUMP on the right. Tap the screen to advance menus.
+
+## 🍜 The night's loop
+
+1. **Home (the den).** Your three kits each crave a dish (from a book of 5 recipes:
+   burger, sushi, omelette, grilled cheese, fish stew). The HUD shows what each one
+   wants and which ingredients you still need.
+2. **Dumpster diving (mini-game).** Press ↓ at a dumpster to climb in and rummage —
+   move the cursor and **fling trash out** to uncover the food buried underneath.
+   Mind the NOISE meter, or the guards come running.
+3. **Cook (mini-game).** Back at the stove with the right ingredients, press the cook
+   button to **stack the dish together** — a slide-and-drop timing game. Nail the
+   center for a PERFECT plate, then serve your kit.
+4. **Win** when every kit is fed and fast asleep.
+
+## 👮 Enemies
+
+- **Guards** — patrol with raycast vision cones (blocked by walls); walk into a beam
+  and a detection meter fills. Take them out from above or with a thrown can.
+- **Guard dog** — smells you by **scent radius** in any direction (hiding masks it),
+  then barks to summon the guards, and it's *fast*.
+- **Searchlight** — a mounted lamp sweeping a bright beam; get caught in it and
+  you're spotted in a blink.
 
 ## ✨ Features
 
@@ -73,8 +98,10 @@ the left, and CLIMB / THROW / JUMP on the right. Tap the screen to advance menus
 index.html        canvas + pixel-perfect scaling, loads the modules in order
 js/core.js        namespace, config, math, seeded RNG, input, bitmap pixel font
 js/audio.js       Web Audio music scheduler + SFX + helicopter rotor
-js/sprites.js     static pixel-art: props, Cedric, chopper, the human family scene
+js/sprites.js     static pixel-art: props, den, stove, chopper, human family scene
 js/critter.js     spring-physics characters (raccoon + guard) with expressive faces
+js/food.js        ingredients, 5 recipes, and their pixel icons
+js/minigames.js   the dumpster-dive and cooking mini-games
 js/particles.js   dust, sparks, noise rings, floating loot text, confetti
 js/level.js       tile grid + collision, camera, parallax city, lighting, layout
 js/player.js      the raccoon — momentum movement, wall mechanics, squash/stretch

@@ -11,12 +11,12 @@
   const Input = RC.Input, Audio = RC.Audio, Pt = RC.Particles, Font = RC.Font, S = RC.Sprites, L = RC.Level;
 
   const INTRO_LINES = [
-    ["THE ALLEY", "The city never sleeps. Neither do the bills."],
-    ["THE ALLEY", "Your wife took the car, the couch, and the good silverware."],
-    ["THE ALLEY", "Three hungry kits are counting on you tonight, pop."],
-    ["THE PLAN", "Dive the dumpsters. Pocket the cash. Feed the kids."],
-    ["THE PLAN", "Slip past the rent-a-cops. Stay in the dark. Use distractions."],
-    ["THE PLAN", "At dawn, Cedric brings the chopper. Reach the rooftop pad."],
+    ["HOME", "Your den behind the noodle shop. Cold tonight."],
+    ["HOME", "Your wife's long gone. Three kits, three empty bellies."],
+    ["THE KITS", "Each one's got a craving. You can see it in their eyes."],
+    ["THE PLAN", "Head out. Dive the dumpsters — brush the trash, find the food."],
+    ["THE PLAN", "Dodge the guards and the dog. Bring the ingredients home."],
+    ["THE PLAN", "Then cook. Feed every last one of them before sunrise."],
   ];
 
   const Game = {
@@ -26,6 +26,7 @@
     started: false,
     // entities
     player: null, guards: [], loot: [], throwables: [], spots: [], hints: [], kids: [], pad: null, checkpoints: [],
+    stove: null, inv: {}, dishesMade: 0,
     // stats
     cash: 0, food: 0, deaths: 0, runStart: 0, runTime: 0,
     checkpoint: null,
@@ -74,27 +75,43 @@
 
     _spawnAll() {
       this.guards = []; this.loot = []; this.throwables = []; this.spots = []; this.hints = []; this.kids = []; this.checkpoints = [];
+      this.inv = {}; this.dishesMade = 0; this.stove = null; this.pad = null;
       Pt.reset();
       for (const sp of L.spawns) {
         switch (sp.type) {
           case "player": this.player = new RC.Player(sp.x, sp.y, this); break;
           case "kid": this.kids.push(new RC.Ent.Kid(sp)); break;
           case "hint": this.hints.push(new RC.Ent.Hint(sp)); break;
-          case "dumpster": this.spots.push(new RC.Ent.HideSpot({ kind: "dumpster", x: sp.x, y: sp.y, loot: sp.loot, food: Math.ceil((sp.loot || 0) / 2) })); break;
+          case "dumpster": this.spots.push(new RC.Ent.HideSpot({ kind: "dumpster", x: sp.x, y: sp.y, ingredients: sp.ingredients || [] })); break;
           case "crate": this.spots.push(new RC.Ent.HideSpot({ kind: "crate", x: sp.x, y: sp.y, size: sp.size })); break;
+          case "ing": this.loot.push(new RC.Ent.Loot({ type: sp.ing, x: sp.x, y: sp.y })); break;
           case "coin": this.loot.push(new RC.Ent.Loot({ type: "coin", x: sp.x, y: sp.y })); break;
-          case "food": this.loot.push(new RC.Ent.Loot({ type: "food", x: sp.x, y: sp.y })); break;
           case "can": this.loot.push(new RC.Ent.Loot({ type: "can", x: sp.x, y: sp.y })); break;
-          case "pickup": this.pad = new RC.Ent.PickupPad(sp); break;
+          case "stove": this.stove = { cx: sp.x, topY: sp.y, t: 0 }; break;
           case "checkpoint": this.checkpoints.push({ x: sp.x, y: sp.y, taken: false }); break;
         }
       }
-      for (const gd of L.guardsDef) this.guards.push(new RC.Ent.Guard(gd));
+      for (const gd of L.guardsDef) {
+        this.guards.push(gd.type === "dog" ? new RC.Ent.Dog(gd)
+          : gd.type === "searchlight" ? new RC.Ent.Searchlight(gd)
+            : new RC.Ent.Guard(gd));
+      }
+      // assign each kit a dish to crave
+      const wants = ["burger", "sushi", "omelette", "grilled", "stew"];
+      this.kids.forEach((k, i) => { k.recipe = RC.Food.recipe(wants[i % wants.length]); k.fed = false; k.celebrate = 0; });
     },
 
     // ---- callbacks used by entities -----------------------------------
     addCash(n) { this.cash += n; },
     addFood(n) { this.food += n; },
+    addIngredient(id) { this.inv[id] = (this.inv[id] || 0) + 1; },
+    startDive(spot) { this.diveSpot = spot; this.state = "dive"; RC.Dive.start(spot, this); },
+    startCook(recipe, kid) { this.cookKid = kid; this.state = "cook"; RC.Cook.start(recipe, kid, this); },
+    cookableKid() { return this.kids.find((k) => !k.fed && k.recipe && RC.Food.have(this.inv, k.recipe)); },
+    alertNear(x, y) {
+      for (const g of this.guards) if (!g.dead && Math.abs(g.x - x) < 170) { g.alert = Math.max(g.alert, 0.65); g.lastX = x; g.grace = 1.2; g.state = "investigate"; }
+      Audio.play("suspect");
+    },
     makeNoise(x, y, r) { for (const g of this.guards) g.hearNoise(x, y, r); Pt.ring(x, y, "#ffd27a", r); },
     spawnLoot(x, y, type) { this.loot.push(new RC.Ent.Loot({ type, x, y })); },
     spawnThrowable(it) { this.throwables.push(new RC.Ent.Throwable(it)); },
@@ -145,8 +162,30 @@
         case "play": this._updPlay(dt); break;
         case "pause": break;
         case "caught": this._updCaught(dt); break;
+        case "dive": this._updDive(dt); break;
+        case "cook": this._updCook(dt); break;
+        case "won": this._updWon(dt); break;
         case "win": this._updWin(dt); break;
       }
+    },
+
+    _updDive(dt) {
+      RC.Dive.update(dt, Input); Pt.update(dt);
+      if (RC.Dive.done) { this.state = "play"; if (this.diveSpot) this.diveSpot.active = false; }
+    },
+    _updCook(dt) {
+      RC.Cook.update(dt, Input); Pt.update(dt);
+      if (!RC.Cook.done) return;
+      const r = RC.Cook.result;
+      if (r && r.fed) {
+        RC.Food.consume(this.inv, RC.Cook.recipe);
+        if (this.cookKid) { this.cookKid.fed = true; this.cookKid.celebrate = 3; }
+        this.dishesMade++;
+        if (this.cookKid) Pt.confetti(this.cookKid.x, this.cookKid.y - 14, 24);
+        Audio.play("checkpoint");
+      }
+      if (this.kids.length && this.kids.every((k) => k.fed)) this._beginWon();
+      else this.state = "play";
     },
 
     _updTitle(dt) {
@@ -178,7 +217,7 @@
       this.runStart = this.time;
       this.fade = 1; this.fadeDir = -1;
       Audio.startMusic();
-      this._toast("FEED THE KIDS — REACH THE ROOF");
+      this._toast("GATHER FOOD · COOK AT HOME · FEED YOUR KITS");
     },
 
     _updPlay(dt) {
@@ -202,7 +241,15 @@
           const it = pl.doThrow();
           if (it) this.spawnThrowable(it);
         }
+        // cook at the home stove
+        if (this.stove && Math.abs(pl.cx() - this.stove.cx) < 20 && pl.grounded &&
+          (Input.pressed("action") || (Input.pressed("throw") && !pl.carry))) {
+          const k = this.cookableKid();
+          if (k) this.startCook(k.recipe, k);
+          else this._toast("NO DISH READY — GO GATHER FOOD");
+        }
       }
+      if (this.stove) this.stove.t += dt;
 
       // pounce takedown: land on a guard's head from above (gore)
       if (!pl.hidden && !pl.dead && pl.vy > 40) {
@@ -245,8 +292,7 @@
         }
       }
 
-      // reached extraction?
-      if (this.pad && this.pad.reached(pl) && !pl.hidden) this._beginWin();
+      // (extraction pad is now just scenery — the goal is feeding the kits)
 
       // camera
       const look = M.clamp(pl.vx / 100, -1, 1);
@@ -276,6 +322,43 @@
         this.state = "play";
         this.fadeDir = -1;
       }
+    },
+
+    _beginWon() {
+      this.state = "won"; this.wonT = 0; this.runTime = this.time - this.runStart;
+      L.focusCamera(this.player.cx(), this.player.cy());
+      Audio.setIntensity(0); Audio.stopMusic(1.2); Audio.play("win");
+      Pt.confetti(this.player.cx(), this.player.cy() - 12, 44);
+    },
+    _updWon(dt) {
+      this.wonT = (this.wonT || 0) + dt;
+      for (const k of this.kids) k.update(dt);
+      this.player.animT += dt;
+      this.player.critter.update(dt, { grounded: true, vx: 0, state: "idle", dir: 1, expr: "happy", look: { x: -0.2, y: 0 } });
+      Pt.update(dt);
+      if ((this.wonT * 60 | 0) % 16 === 0) Pt.confetti(this.player.cx() + (RC.rng() - 0.5) * 90, this.player.cy() - 34, 5);
+      L.updateCamera(this.player.cx(), this.player.cy(), 0, dt);
+      if (this.wonT > 1 && Input.pressed("confirm")) this._toTitle();
+    },
+    _drawWon(ctx) {
+      ctx.fillStyle = "rgba(10,8,20,0.62)"; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+      Font.draw(ctx, "YOU FED THE FAMILY", VIEW_W / 2, 34, { align: "center", color: P.gold, scale: 2, tracking: 2, shadow: true });
+      Font.draw(ctx, "EVERY BELLY FULL. EVERY KIT ASLEEP.", VIEW_W / 2, 58, { align: "center", color: P.text, scale: 1 });
+      const mins = Math.floor(this.runTime / 60), secs = (this.runTime % 60) | 0;
+      const rows = [
+        ["DISHES COOKED", "" + this.dishesMade],
+        ["KITS FED", this.kids.filter((k) => k.fed).length + "/" + this.kids.length],
+        ["TIMES BUSTED", "" + this.deaths],
+        ["TIME", (mins + "").padStart(2, "0") + ":" + (secs + "").padStart(2, "0")],
+      ];
+      for (let i = 0; i < rows.length; i++) {
+        const y = 84 + i * 14;
+        Font.draw(ctx, rows[i][0], VIEW_W / 2 - 74, y, { color: P.textDim, scale: 1 });
+        Font.draw(ctx, rows[i][1], VIEW_W / 2 + 74, y, { align: "right", color: P.goldHi, scale: 1 });
+      }
+      const grade = this.deaths === 0 ? "PERFECT PROVIDER" : this.deaths < 3 ? "GOOD DAD" : "SCRAPPY BUT LOVING";
+      Font.draw(ctx, grade, VIEW_W / 2, 150, { align: "center", color: P.good, scale: 1, tracking: 1 });
+      if ((this.time % 1) < 0.6) Font.draw(ctx, "PRESS Z — ANOTHER NIGHT", VIEW_W / 2, VIEW_H - 18, { align: "center", color: P.text, scale: 1 });
     },
 
     _beginWin() {
@@ -347,13 +430,14 @@
       const cam = { x: L.camX(), y: L.camY() };
       L.drawTiles(ctx);
       L.drawPoles(ctx);
+      S.den(ctx, Math.round(6 * RC.TILE + 8 - cam.x), Math.round(24 * RC.TILE - cam.y), this.time);  // home
       Pt.drawDecals(ctx, cam);      // blood splats sit on the ground
 
       // hide spots (behind actors), then loot, actors, particles
       for (const s of this.spots) s.draw(ctx, cam);
       if (this.state !== "win") for (const k of this.kids) k.draw(ctx, cam);
       for (const l of this.loot) l.draw(ctx, cam);
-      if (this.pad) this.pad.draw(ctx, cam);
+      if (this.stove) S.stove(ctx, Math.round(this.stove.cx - cam.x), Math.round(this.stove.topY - cam.y), this.stove.t, !!this.cookableKid());
       // checkpoint flags
       for (const cp of this.checkpoints) {
         const x = Math.round(cp.x - cam.x), y = Math.round(cp.y - cam.y);
@@ -382,6 +466,9 @@
       if (this.state === "intro") this._drawIntro(ctx);
       if (this.state === "pause") this._drawPause(ctx);
       if (this.state === "caught") this._drawCaught(ctx);
+      if (this.state === "dive") RC.Dive.draw(ctx);
+      if (this.state === "cook") RC.Cook.draw(ctx);
+      if (this.state === "won") this._drawWon(ctx);
       if (this.state === "win") this._drawWin(ctx);
 
       // flash + fade
@@ -409,18 +496,32 @@
 
     // ---- HUD ----------------------------------------------------------
     _drawHUD(ctx) {
-      // top-left stats panel
-      ctx.fillStyle = "rgba(10,10,22,0.55)";
-      ctx.fillRect(4, 4, 96, 24);
-      // cash
-      S.loot(ctx, 12, 15, "coin", this.time);
-      Font.draw(ctx, "$" + this.cash, 20, 8, { color: P.goldHi, scale: 1 });
-      // food
-      S.loot(ctx, 50, 15, "food", this.time + 1);
-      Font.draw(ctx, "" + this.food, 58, 8, { color: P.food, scale: 1 });
-      // kids hearts
-      for (let i = 0; i < 3; i++) S.heart(ctx, 10 + i * 8, 18, true);
-      Font.draw(ctx, "KITS", 36, 19, { color: P.textDim, scale: 1 });
+      // kits' wanted dishes (top-left cards)
+      for (let i = 0; i < this.kids.length; i++) {
+        const k = this.kids[i], bx = 4 + i * 56, by = 4, bw = 52, bh = 28;
+        ctx.fillStyle = "rgba(10,10,22,0.6)"; ctx.fillRect(bx, by, bw, bh);
+        ctx.fillStyle = k.fed ? "rgba(103,224,163,0.95)" : "rgba(120,126,180,0.5)"; ctx.fillRect(bx, by, bw, 1);
+        Font.draw(ctx, "KIT" + (i + 1), bx + 3, by + 3, { color: P.textDim, scale: 1 });
+        if (k.fed) Font.draw(ctx, "FED", bx + bw - 3, by + 3, { align: "right", color: P.good, scale: 1 });
+        if (k.recipe) {
+          for (let j = 0; j < k.recipe.ing.length; j++) {
+            const id = k.recipe.ing[j], gx = bx + 9 + j * 13, gy = by + 18;
+            RC.Food.drawIngredient(ctx, gx, gy, id, 1);
+            if (!k.fed && (this.inv[id] || 0) === 0) { ctx.fillStyle = "rgba(12,8,16,0.55)"; ctx.fillRect(gx - 4, gy - 4, 8, 8); }
+          }
+        }
+      }
+      // inventory bag (bottom-left)
+      let ix = 8; const iy = VIEW_H - 12;
+      Font.draw(ctx, "BAG", ix, iy - 1, { color: P.textDim, scale: 1 }); ix += 24;
+      let anyBag = false;
+      for (const id of RC.Food.ids) {
+        const n = this.inv[id] || 0; if (n <= 0) continue; anyBag = true;
+        RC.Food.drawIngredient(ctx, ix + 4, iy + 3, id, 1);
+        Font.draw(ctx, "" + n, ix + 10, iy, { color: P.text, scale: 1 });
+        ix += 18;
+      }
+      if (!anyBag) Font.draw(ctx, "EMPTY", ix, iy - 1, { color: P.textDim, scale: 1 });
 
       // detection meter (top center) when something is watching
       if (this.detectShown > 0.02) {
@@ -447,6 +548,11 @@
           const bob = Math.sin(this.time * 6) * 1;
           Font.draw(ctx, s.hasLoot ? "v DIVE" : "v HIDE", s.cx - L.camX(), s.topY - L.camY() - 12 + bob, { align: "center", color: P.gold, scale: 1, shadow: true });
         }
+      }
+      // stove cook prompt
+      if (this.stove && !this.player.hidden && Math.abs(this.player.cx() - this.stove.cx) < 20 && this.player.grounded) {
+        const k = this.cookableKid();
+        Font.draw(ctx, k ? "C: COOK " + k.recipe.name : "NEED FOOD", this.stove.cx - L.camX(), this.stove.topY - L.camY() - 18, { align: "center", color: k ? P.gold : P.textDim, scale: 1, shadow: true });
       }
 
       // carry indicator

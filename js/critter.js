@@ -299,29 +299,41 @@
     const P = this.pal, g = this._mk(ctx);
     const bob = this.bob.x, moving = this.grounded && Math.abs(this.vx) > 12;
     const lp = this.legPhase, sw = moving ? Math.sin(lp) : 0, sw2 = moving ? Math.sin(lp + Math.PI) : 0;
-    // legs
-    g.R(-3.5 + sw2 * 2.5, -6, 3, 6, P.dark); g.R(-4 + sw2 * 2.5, -1, 4, 1, P.boot);
-    g.R(1 + sw * 2.5, -6, 3, 6, P.dark); g.R(0.5 + sw * 2.5, -1, 4, 1, P.boot);
-    // torso (uniform)
-    this._capsule(g, 0, -15 + bob, 0, -6, 5.2, P.out);
-    this._capsule(g, 0, -15 + bob, 0, -6, 4.4, P.uni);
-    g.R(3, -14 + bob, 1.4, 8, P.lite);       // front light
-    g.R(-4.4, -8, 9, 1.4, P.boot);           // belt
-    g.R(2.6, -12 + bob, 2, 2, P.badge);      // badge
-    // back arm
-    g.R(-4.4, -13 + bob, 2.4, 5, P.dark);
-    // front arm w/ flashlight forward
-    g.R(3.2, -13 + bob, 2.6, 3, P.uni);
-    g.R(5.4, -12 + bob, 4, 2.2, "#4a5a66");
-    g.R(9, -12 + bob, 1.2, 2.2, "#fff2c8");
-    // head + cap + face
-    const hy = -19 + bob;
-    const hsx = 1.2 * this.dir;
-    g.Bs(hsx, hy, 4.2, P.out); g.Bs(hsx, hy, 3.5, P.skin);
-    g.Bs(hsx, hy + 1.4, 2.6, P.skinD);       // jaw shadow
-    g.Rs(hsx - 4.5, hy - 3.4, 9, 2.4, P.cap); g.Rs(hsx - 5, hy - 1.6, 5.5, 1, "#0d0b1f"); // cap + brim (front)
-    g.Rs(hsx + (this.dir > 0 ? 1 : -2), hy - 0.6, 1.6, 1.4, P.eye);   // eye
-    if (this.expr === "alert") g.Rs(hsx - 1, hy - 6, 2, 2, "#ff5d6c");
+    const glove = "#241d38";
+    // ---- legs + boots ----
+    const bl = -3.6 + sw2 * 2.6, fl = 1.0 + sw * 2.6;
+    g.R(bl, -6.5, 3, 7, P.dark); g.R(fl, -6.5, 3, 7, "#463a6e");
+    g.R(bl - 1, -1.5, 4, 2, P.boot); g.R(fl - 1, -1.5, 4, 2, P.boot);
+    g.R(bl - 1, -1.5, 4, 1, "#2a2340"); g.R(fl - 1, -1.5, 4, 1, "#2a2340");
+    // ---- back arm (behind torso) ----
+    g.R(-6, -15 + bob, 2.6, 7, P.dark); g.R(-6, -9 + bob, 2.6, 2.4, glove);
+    // ---- torso: broad uniform ----
+    this._capsule(g, 0, -15.5 + bob, 0, -6, 5.7, P.out);
+    this._capsule(g, 0, -15.5 + bob, 0, -6, 5.0, P.uni);
+    g.R(3.6, -14.5 + bob, 1.6, 8.5, P.lite);            // front light seam
+    g.R(-5.2, -14.5 + bob, 2, 8, P.dark);               // back shade
+    g.R(-0.5, -14 + bob, 1, 8, "#3a2f5a");              // zipper
+    g.R(-4, -12.5 + bob, 3, 3, "#3a2f5a"); g.R(-4, -12.5 + bob, 3, 1, P.lite); // chest pocket
+    // ---- belt + buckle, epaulettes, badge ----
+    g.R(-5.2, -7.8, 10.4, 2, P.boot); g.R(-1, -7.8, 2, 2, P.badge);
+    g.R(-6, -15.5 + bob, 2.4, 1.6, P.lite); g.R(3.6, -15.5 + bob, 2.4, 1.6, P.lite);
+    g.R(2.6, -12.5 + bob, 2, 2, P.badge); g.R(2.6, -12.5 + bob, 1, 1, "#fff2c8");
+    // ---- front arm + flashlight ----
+    g.R(3.4, -14 + bob, 2.6, 4, P.uni); g.R(5, -12 + bob, 2.6, 5, P.uni);
+    g.R(5.6, -7.5 + bob, 2.6, 2.2, glove);
+    g.R(6.8, -12.5 + bob, 4.6, 2.6, "#4a5a66"); g.R(6.8, -12.5 + bob, 4.6, 1, "#6a7a86");
+    g.R(11, -12.5 + bob, 1.4, 2.6, "#fff2c8");          // lens
+    // ---- head + peaked cap + stern face ----
+    const hy = -19.5 + bob, hsx = 1.3 * this.dir;
+    g.Bs(hsx, hy, 4.4, P.out); g.Bs(hsx, hy, 3.7, P.skin);
+    g.Bs(hsx, hy + 1.7, 2.8, P.skinD);
+    g.Rs(Math.round(hsx) + (this.dir > 0 ? 2 : -3), hy - 0.5, 1, 1, P.skinD); // nose
+    g.Rs(hsx - 4.8, hy - 3.8, 9.6, 2.8, P.cap);
+    g.Rs(hsx - 5.6, hy - 1.4, 5.8, 1.2, "#0d0b1f");     // brim
+    g.Rs(Math.round(hsx) - 1, hy - 3.4, 2, 1, P.badge); // cap badge
+    g.Rs(hsx - 2, hy - 1.7, 4, 1, "#3a2f4a");           // brow
+    g.Rs(hsx + (this.dir > 0 ? 0.5 : -1.5), hy - 0.6, 1.6, 1.4, P.eye);
+    if (this.expr === "alert") g.Rs(hsx - 1, hy - 6.6, 2, 2, "#ff5d6c");
   };
 
   RC.Critter = Critter;

@@ -201,6 +201,155 @@
   };
 
   /* ======================================================================
+     GUARD DOG — sniffs you out by scent (any direction, short range),
+     plus a forward glance. Fast, and barks to summon the guards.
+  ====================================================================== */
+  function Dog(def) {
+    this.homeX = def.x; this.x = def.x; this.y = def.y;
+    this.min = def.min; this.max = def.max; this.dir = def.dir || 1;
+    this.scent = def.scent || 46; this.range = def.range || 66; this.fov = def.fov || 0.6;
+    this.reset();
+  }
+  Dog.prototype.reset = function () {
+    this.x = this.homeX; this.alert = 0; this.grace = 0; this.state = "patrol"; this.turnT = 0;
+    this.animT = 0; this.moving = false; this.dead = false; this.deadT = 0; this.knockDir = 1;
+    this.lastX = this.homeX; this.barkCd = 0;
+  };
+  Dog.prototype.eyeX = function () { return this.x + this.dir * 6; };
+  Dog.prototype.eyeY = function () { return this.y - 6; };
+  Dog.prototype._los = Guard.prototype._los;
+  Dog.prototype._walk = Guard.prototype._walk;
+  Dog.prototype.hearNoise = Guard.prototype.hearNoise;
+  Dog.prototype.canSee = function (pl) {
+    if (this.dead || pl.hidden || pl.dead) return 0;
+    const dx = pl.cx() - this.x, dy = pl.cy() - this.y, dist = Math.hypot(dx, dy);
+    if (dist < this.scent) return 0.9;                 // scent — smells you nearby
+    if (dist > this.range) return 0;
+    const d = Math.abs(angDiff(Math.atan2(dy, dx), Math.atan2(0.1, this.dir)));
+    if (d > this.fov) return 0;
+    if (!this._los(this.eyeX(), this.eyeY(), pl.cx(), pl.cy())) return 0;
+    return 0.7 * (1 - dist / this.range);
+  };
+  Dog.prototype.die = function (fromDir) {
+    if (this.dead) return;
+    this.dead = true; this.deadT = 0; this.alert = 0; this.knockDir = fromDir || this.dir;
+    Pt().blood(this.x, this.y - 7, this.knockDir, 18); Pt().bloodPool(this.x, this.y);
+    A().play("splat"); L().shake(2.6, 0.22);
+  };
+  Dog.prototype.update = function (dt, pl, game) {
+    this.animT += dt; if (this.barkCd > 0) this.barkCd -= dt;
+    if (this.dead) { this.deadT += dt; return; }
+    const s = this.canSee(pl);
+    if (s > 0) {
+      this.alert = M.sat(this.alert + 2.1 * s * dt); this.lastX = pl.cx(); this.grace = 0.7;
+      this.dir = pl.cx() < this.x ? -1 : 1;
+      if (this.alert >= 1) { game.onSpotted(this); return; }
+      if (this.alert > SUSP && this.barkCd <= 0) { A().play("suspect"); if (game.alertNear) game.alertNear(this.x, this.y); this.barkCd = 1.4; }
+    } else { if (this.grace > 0) this.grace -= dt; else this.alert = Math.max(0, this.alert - 0.7 * dt); }
+    this.moving = false;
+    if (this.alert >= SUSP) {
+      this.state = "alert";
+      if (Math.abs(this.x - this.lastX) > 6) { this.dir = this.lastX < this.x ? -1 : 1; this.moving = this._walk(this.dir, 122, dt, false); }
+    } else {
+      this.state = "patrol";
+      if (this.turnT > 0) this.turnT -= dt; else this.moving = this._walk(this.dir, 48, dt, true);
+    }
+  };
+  Dog.prototype.drawCone = function (ctx, cam) {
+    if (this.dead) return;
+    const x = this.x - cam.x, y = this.y - 6 - cam.y, pulse = 0.5 + 0.5 * Math.sin(this.animT * 4);
+    const col = this.alert >= SPOT_BUBBLE ? "255,90,108" : this.alert >= SUSP ? "255,176,90" : "150,200,255";
+    const g = ctx.createRadialGradient(x, y, 2, x, y, this.scent);
+    g.addColorStop(0, "rgba(" + col + "," + (0.05 + this.alert * 0.09) + ")"); g.addColorStop(1, "rgba(" + col + ",0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, this.scent, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "rgba(" + col + "," + (0.14 + pulse * 0.1) + ")"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(x, y, this.scent * (0.75 + pulse * 0.25), 0, Math.PI * 2); ctx.stroke();
+  };
+  Dog.prototype.draw = function (ctx, cam) {
+    const x = Math.round(this.x - cam.x), y = Math.round(this.y - cam.y);
+    const body = "#5a4632", dk = "#382a1c", hi = "#6f583e";
+    if (this.dead) {
+      const rot = Math.min(1, this.deadT * 4) * (this.knockDir > 0 ? Math.PI / 2 : -Math.PI / 2);
+      S().shadow(ctx, x, y + 1, 14, 0.3);
+      ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+      const p0 = new (S().Painter)(ctx, 0, 0, this.dir); p0.r(-6, -9, 12, 6, body); ctx.restore(); return;
+    }
+    S().shadow(ctx, x, y + 1, 15, 0.3);
+    const p = new (S().Painter)(ctx, x, y, this.dir);
+    const ph = this.animT * (this.state === "alert" ? 18 : 10), sw = this.moving ? Math.round(Math.sin(ph) * 2) : 0;
+    p.r(-6 + sw, -4, 2, 4, dk); p.r(4 - sw, -4, 2, 4, dk);        // back legs
+    p.r(-4 - sw, -4, 2, 4, body); p.r(2 + sw, -4, 2, 4, body);   // front legs
+    p.r(-6, -9, 12, 5, body); p.r(-6, -9, 12, 1, hi); p.r(-6, -5, 12, 1, dk);
+    p.r(-8, -12, 3, 2, body); p.r(-9, -14, 2, 3, body);          // tail up
+    p.r(4, -12, 5, 6, body); p.r(8, -11, 3, 3, body);            // head + snout
+    p.r(4, -13, 2, 3, dk);                                        // ear
+    p.r(10, -9, 1, 1, "#16181f");                                // nose
+    p.r(6, -10, 1, 1, this.state === "alert" ? "#ff5d6c" : "#f4f6ff"); // eye
+    if (this.alert >= SPOT_BUBBLE) this._bark(ctx, x, y - 22);
+    else if (this.alert >= SUSP) Guard.prototype._bubble.call(this, ctx, x, y - 22, "?", P.detect);
+  };
+  Dog.prototype._bark = function (ctx, x, y) {
+    const bob = Math.sin(this.animT * 12) * 1;
+    ctx.fillStyle = "rgba(10,10,20,0.65)"; ctx.fillRect(x - 8, y - 1 + bob, 18, 11);
+    RC.Font.draw(ctx, "GRR!", x + 1, y + bob, { align: "center", color: P.bad, scale: 1 });
+  };
+
+  /* ======================================================================
+     SEARCHLIGHT — a mounted lamp that sweeps a bright beam. Get caught in
+     it and you're spotted fast. Indestructible; summons the guards.
+  ====================================================================== */
+  function Searchlight(def) {
+    this.x = def.x; this.y = def.y; this.range = def.range || 130;
+    this.width = def.width || 0.26; this.center = def.center != null ? def.center : Math.PI / 2;
+    this.amp = def.amp || 0.7; this.speed = def.speed || 1.0;
+    this.reset();
+  }
+  Searchlight.prototype.reset = function () { this.alert = 0; this.grace = 0; this.t = RC.rng() * 6; this.dead = false; this.state = "patrol"; this.animT = 0; this.moving = false; };
+  Searchlight.prototype._los = Guard.prototype._los;
+  Searchlight.prototype.hearNoise = function () {};
+  Searchlight.prototype.die = function () {};   // indestructible fixture
+  Searchlight.prototype.ang = function () { return this.center + Math.sin(this.t * this.speed) * this.amp; };
+  Searchlight.prototype.canSee = function (pl) {
+    if (pl.hidden || pl.dead) return 0;
+    const dx = pl.cx() - this.x, dy = pl.cy() - this.y, dist = Math.hypot(dx, dy);
+    if (dist > this.range || dist < 4) return 0;
+    const d = Math.abs(angDiff(Math.atan2(dy, dx), this.ang()));
+    if (d > this.width) return 0;
+    if (!this._los(this.x, this.y, pl.cx(), pl.cy())) return 0;
+    return 0.95 * (1 - d / this.width);
+  };
+  Searchlight.prototype.update = function (dt, pl, game) {
+    this.animT += dt; this.t += dt;
+    const s = this.canSee(pl);
+    if (s > 0) {
+      this.alert = M.sat(this.alert + 1.9 * s * dt); this.grace = 0.4;
+      if (this.alert >= 1) { game.onSpotted(this); return; }
+      if (this.alert > SUSP && game.alertNear) game.alertNear(pl.cx(), pl.feetY());
+    } else { if (this.grace > 0) this.grace -= dt; else this.alert = Math.max(0, this.alert - 1.0 * dt); }
+  };
+  Searchlight.prototype.drawCone = function (ctx, cam) {
+    const x = this.x - cam.x, y = this.y - cam.y, a = this.ang();
+    const col = this.alert >= SPOT_BUBBLE ? "255,90,108" : this.alert >= SUSP ? "255,176,90" : "255,244,200";
+    ctx.beginPath(); ctx.moveTo(x, y);
+    const a1 = a - this.width, a2 = a + this.width;
+    ctx.lineTo(x + Math.cos(a1) * this.range, y + Math.sin(a1) * this.range);
+    ctx.lineTo(x + Math.cos(a) * this.range, y + Math.sin(a) * this.range);
+    ctx.lineTo(x + Math.cos(a2) * this.range, y + Math.sin(a2) * this.range);
+    ctx.closePath();
+    const g = ctx.createRadialGradient(x, y, 2, x, y, this.range);
+    g.addColorStop(0, "rgba(" + col + ",0.3)"); g.addColorStop(1, "rgba(" + col + ",0)");
+    ctx.fillStyle = g; ctx.fill();
+  };
+  Searchlight.prototype.draw = function (ctx, cam) {
+    const x = Math.round(this.x - cam.x), y = Math.round(this.y - cam.y), a = this.ang();
+    const p = new (S().Painter)(ctx, x, y, 1);
+    p.r(-1, -8, 2, 5, "#23202f");                       // mount
+    p.r(-4, -4, 8, 6, "#2a2740"); p.r(-3, -3, 6, 4, "#4a4568");
+    p.r(-2 + Math.round(Math.cos(a) * 3), -1 + Math.round(Math.sin(a) * 3), 4, 3, "#fff2c8"); // lens
+  };
+  Searchlight.prototype._bubble = Guard.prototype._bubble;
+
+  /* ======================================================================
      THROWABLE (in-flight distraction object)
   ====================================================================== */
   function Throwable(o) {
@@ -257,13 +406,18 @@
   Loot.prototype.update = function (dt, game, pl) {
     this.t += dt;
     if (pl.hidden || pl.dead) return;
-    if (M.aabb(this.x - 6, this.y - 10, 12, 12, pl.x, pl.y, pl.w, pl.h)) {
-      if (this.type === "coin") { game.addCash(1); Pt().lootPop(this.x, this.y - 8, "+$1", P.goldHi); A().play("loot"); this.dead = true; }
-      else if (this.type === "food") { game.addFood(1); Pt().lootPop(this.x, this.y - 8, "+FOOD", P.food); A().play("food"); this.dead = true; }
+    if (M.aabb(this.x - 7, this.y - 12, 14, 14, pl.x, pl.y, pl.w, pl.h)) {
+      if (RC.Food.ING[this.type]) { game.addIngredient(this.type); Pt().lootPop(this.x, this.y - 8, "+" + RC.Food.name(this.type), P.good); A().play("food"); this.dead = true; }
+      else if (this.type === "coin") { game.addCash(1); Pt().lootPop(this.x, this.y - 8, "+$1", P.goldHi); A().play("loot"); this.dead = true; }
       else if (this.type === "can") { if (!pl.carry) { pl.carry = "can"; A().play("pickup"); Pt().spark(this.x, this.y - 4, 4, "#cfd6ff"); this.dead = true; } }
     }
   };
   Loot.prototype.draw = function (ctx, cam) {
+    if (RC.Food.ING[this.type]) {
+      const bob = Math.sin(this.t * 3 + this.x) * 1.5;
+      RC.Food.drawIngredient(ctx, Math.round(this.x - cam.x), Math.round(this.y - cam.y - 4 + bob), this.type, 2);
+      return;
+    }
     S().loot(ctx, Math.round(this.x - cam.x), Math.round(this.y - cam.y), this.type, this.t);
   };
 
@@ -273,8 +427,8 @@
   function HideSpot(o) {
     this.kind = o.kind;                 // 'dumpster' | 'crate'
     this.cx = o.x; this.baseY = o.y;    // baseY = ground surface (bottom)
-    this.loot = o.loot || 0; this.hasLoot = this.loot > 0;
-    this.food = o.food || 0;
+    this.ingredients = (o.ingredients || []).slice();
+    this.hasLoot = this.ingredients.length > 0;
     this.size = o.size || 16;
     if (this.kind === "dumpster") { this.w = 32; this.hgt = 20; }
     else { this.w = this.size; this.hgt = this.size; }
@@ -288,22 +442,18 @@
       pl.feetY() >= this.topY - 5 && pl.feetY() <= this.baseY + 5;
   };
   HideSpot.prototype.interact = function (pl, game) {
-    if (this.hasLoot && this.kind === "dumpster") {
-      // dive for loot
-      let cash = this.loot, food = Math.max(0, this.food || Math.floor(this.loot / 2));
-      for (let i = 0; i < cash; i++) game.addCash(1);
-      for (let i = 0; i < food; i++) game.addFood(1);
-      Pt().lootPop(this.cx, this.topY - 4, "+$" + cash + (food ? "  +" + food + "F" : ""), P.goldHi);
-      Pt().spark(this.cx, this.topY - 2, 12, P.gold);
-      A().play("loot");
-      this.hasLoot = false; this.loot = 0;
+    if (this.kind === "dumpster" && this.ingredients.length > 0) {
+      game.startDive(this);       // rummage for food (mini-game)
+      return;
     }
+    // otherwise: hide inside
     this.active = true; this.wobble = 0.5;
     pl.enterHide({ x: this.cx, y: this.topY });
   };
   HideSpot.prototype.leave = function (pl) { this.active = false; pl.exitHide(); };
   HideSpot.prototype.update = function (dt) {
     this.animT += dt;
+    this.hasLoot = this.ingredients.length > 0;
     if (this.wobble > 0) this.wobble -= dt;
     this.lidOpen = M.damp(this.lidOpen, this.active ? 0 : (this.hasLoot ? 0.4 : 0.12), 8, dt);
   };
@@ -404,6 +554,8 @@
   };
 
   Ent.Guard = Guard;
+  Ent.Dog = Dog;
+  Ent.Searchlight = Searchlight;
   Ent.Throwable = Throwable;
   Ent.Loot = Loot;
   Ent.HideSpot = HideSpot;
