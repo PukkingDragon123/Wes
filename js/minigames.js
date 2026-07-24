@@ -97,7 +97,10 @@
     },
 
     draw(ctx) {
-      panel(ctx, this.px, this.py, this.pw, this.ph, "DUMPSTER DIVE", "#67e0a3");
+      panel(ctx, this.px, this.py, this.pw, this.ph, null, "#67e0a3");
+      // a little green dumpster as the "title"
+      const tx = this.px + this.pw / 2, ty = this.py + 6;
+      ctx.fillStyle = "#3f6b4a"; ctx.fillRect(tx - 8, ty, 16, 5); ctx.fillStyle = "#2c4c36"; ctx.fillRect(tx - 9, ty - 2, 18, 2);
       // cells
       for (let i = 0; i < this.cells.length; i++) {
         const cell = this.cells[i], rc = this._cellRect(i);
@@ -125,17 +128,15 @@
         ctx.save(); ctx.translate(Math.round(f.x), Math.round(f.y)); ctx.rotate(f.rot);
         this._trash(ctx, 0, 0, f.type); ctx.restore();
       }
-      // noise bar
-      const bx = this.px + 12, by = this.py + this.ph - 22, bw = this.pw - 24;
-      Font.draw(ctx, "NOISE", bx, by - 9, { color: P.textDim, scale: 1 });
+      // noise bar with a little ear/soundwave icon (no words)
+      const bx = this.px + 20, by = this.py + this.ph - 20, bw = this.pw - 32;
+      ctx.strokeStyle = "#8b90c8"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(this.px + 11, by + 2, 2.5, -0.6, 0.6); ctx.arc(this.px + 11, by + 2, 4, -0.7, 0.7); ctx.stroke();
       ctx.fillStyle = "#26243a"; ctx.fillRect(bx, by, bw, 5);
       const nc = this.noise > 70 ? P.bad : this.noise > 40 ? P.detect : P.good;
       ctx.fillStyle = nc; ctx.fillRect(bx, by, bw * this.noise / 100, 5);
-      // remaining (on the noise row, right side — clear of the title)
-      Font.draw(ctx, "FOOD LEFT " + this.remaining.length, this.px + this.pw - 12, by - 9, { align: "right", color: P.gold, scale: 1 });
-      // message + controls
-      if (this.msgT > 0) Font.draw(ctx, this.msg, VW / 2, this.py + this.ph - 40, { align: "center", color: P.goldHi, scale: 1, shadow: true });
-      Font.draw(ctx, "MOVE + Z/JUMP: DIG    X: LEAVE", VW / 2, this.py + this.ph - 10, { align: "center", color: P.textDim, scale: 1 });
+      // remaining food shown as ingredient icons
+      for (let i = 0; i < this.remaining.length; i++) Food.drawIngredient(ctx, this.px + this.pw - 8 - i * 10, this.py + 7, this.remaining[i], 1);
     },
 
     _trash(ctx, x, y, type) {
@@ -188,6 +189,7 @@
         if (this.idx >= this.pieces.length) {
           const q = this.qualitySum / this.pieces.length;
           this.grade = q > 0.85 ? "PERFECT!" : q > 0.6 ? "TASTY!" : "EDIBLE";
+          this.gradeStars = q > 0.85 ? 3 : q > 0.6 ? 2 : 1;
           this.mode = "serve"; this.endT = 2.4; A().play("win");
           if (this.kid) this.kid.celebrate = 2.4;
         }
@@ -195,13 +197,14 @@
     },
 
     draw(ctx) {
-      panel(ctx, this.px, this.py, this.pw, this.ph, "COOKING: " + this.recipe.name, P.gold);
+      panel(ctx, this.px, this.py, this.pw, this.ph, null, P.gold);
+      // dish icon as the "title"
+      Food.drawDish(ctx, this.px + this.pw / 2, this.py + 5, this.recipe, 1);
       // the kid watching, hungry -> happy
       if (this.kid) this.kid.critter.draw(ctx, this.px + 22, this.py + this.ph - 8, { zoom: 1.1 });
-      // recipe target (right)
-      Font.draw(ctx, "RECIPE", this.px + this.pw - 34, this.py + 20, { align: "center", color: P.textDim, scale: 1 });
+      // recipe ingredients (right column, icons only)
       for (let i = 0; i < this.recipe.ing.length; i++)
-        Food.drawIngredient(ctx, this.px + this.pw - 34, this.py + 32 + i * 12, this.recipe.ing[i], 1);
+        Food.drawIngredient(ctx, this.px + this.pw - 30, this.py + 26 + i * 12, this.recipe.ing[i], 1);
 
       // plate + stack
       ctx.fillStyle = "#cfd2e2"; ctx.fillRect(this.plateX - 16, this.plateY, 32, 3);
@@ -219,15 +222,22 @@
         Food.drawIngredient(ctx, this.plateX + this.cursorX, y, this.pieces[this.idx], 2);
         // drop trail
         ctx.fillStyle = "rgba(255,255,255,0.12)"; ctx.fillRect(this.plateX + this.cursorX - 1, y + 6, 2, this.plateY - y - 8);
-        Font.draw(ctx, "Z/JUMP: DROP   X: LEAVE", VW / 2, this.py + this.ph - 10, { align: "center", color: P.textDim, scale: 1 });
-        Font.draw(ctx, "STACK " + (this.idx + 1) + "/" + this.pieces.length, this.plateX, this.py + 16, { align: "center", color: P.text, scale: 1 });
+        // stack progress as pips (no words)
+        for (let i = 0; i < this.pieces.length; i++) {
+          ctx.fillStyle = i < this.idx ? P.gold : "#3a3f5e";
+          ctx.fillRect(this.plateX - this.pieces.length * 4 + i * 8, this.py + 16, 5, 3);
+        }
       } else {
-        // served!
+        // served! dish + star rating + a heart (no words)
         Food.drawDish(ctx, this.plateX, this.plateY - 2, this.recipe, 2);
-        const c = this.grade === "PERFECT!" ? P.good : this.grade === "TASTY!" ? P.gold : P.text;
-        Font.draw(ctx, this.grade, VW / 2, this.py + 26, { align: "center", color: c, scale: 2, tracking: 1, shadow: true });
-        Font.draw(ctx, "SERVED TO YOUR KIT!", VW / 2, this.py + this.ph - 14, { align: "center", color: P.text, scale: 1 });
-        if ((this.t * 6 | 0) % 3 === 0) Pt().emit({ kind: "text", x: this.px + 22, y: this.py + this.ph - 22, vy: -20, life: 0.8, text: "<3", color: P.bad });
+        for (let i = 0; i < 3; i++) {
+          ctx.fillStyle = i < (this.gradeStars || 1) ? P.gold : "#3a3f5e";
+          const sx = VW / 2 + (i - 1) * 12, sy = this.py + 30;
+          ctx.beginPath();
+          for (let k = 0; k < 5; k++) { const a = -Math.PI / 2 + k * (Math.PI * 2 / 5); k ? ctx.lineTo(sx + Math.cos(a) * 4, sy + Math.sin(a) * 4) : ctx.moveTo(sx + Math.cos(a) * 4, sy + Math.sin(a) * 4); const a2 = a + Math.PI / 5; ctx.lineTo(sx + Math.cos(a2) * 1.7, sy + Math.sin(a2) * 1.7); }
+          ctx.closePath(); ctx.fill();
+        }
+        if ((this.t * 6 | 0) % 3 === 0) Pt().emit({ kind: "spark", x: this.px + 22 + (Math.random() - 0.5) * 10, y: this.py + this.ph - 20, vy: -30, life: 0.7, color: P.bad, size: 1 });
       }
     },
   };

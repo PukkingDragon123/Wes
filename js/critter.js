@@ -25,9 +25,10 @@
   // ---- per-kind look --------------------------------------------------
   const SKIN = {
     raccoon: {
-      out: "#2a2c40", dark: "#474b66", fur: "#666b88", lite: "#8b90b2", belly: "#c2c6e2",
-      mask: "#191b2b", ring: "#3c3f57", tail1: "#7a7f9c", tail2: "#33364c", tip: "#c8cce6",
-      ear: "#c58ba0", eye: "#f4f6ff", pup: "#141726", nose: "#3a2030", brow: "#20222f", face: "#cdd0ec",
+      out: "#0e1020", dark: "#2b2e4c", fur: "#3a3e66", lite: "#5b6193", belly: "#4a4f7c",
+      mask: "#141626", tail1: "#cfd3ee", tail2: "#20233f", tip: "#e6e8fb",
+      ear: "#c0687e", eye: "#f7f8ff", pup: "#141726", nose: "#1a1c2a", brow: "#0e1020",
+      face: "#e2e4f4", faceShade: "#b3b6d4", scarf: "#c0433c", scarfHi: "#e0655c",
     },
     guard: {
       out: "#231d38", dark: "#3a2f5a", uni: "#54427e", lite: "#7d64b0", skin: "#d8a07a",
@@ -164,7 +165,8 @@
     };
   };
 
-  // A real 4-legged raccoon that rears up on its hind legs to climb / attack.
+  // A 4-legged raccoon "vagabond" — inked high-contrast silhouette, pale masked
+  // face, flowing ringed cloak-tail, a little red bandana. Rears up to fight/climb.
   Critter.prototype._raccoon = function (ctx) {
     const P = this.pal, g = this._mk(ctx);
     const bob = this.bob.x, r = this.rear ? this.rear.x : 0;
@@ -174,58 +176,66 @@
     const sBack = Math.sin(lp * 2) * 3 * gg, sFore = Math.sin(lp * 2 + 2.2) * 3 * gg;
     const lift = moving ? Math.max(0, Math.sin(lp * 2 + 1)) * 2 * gg : 0;
 
-    // rear-up: rotate the whole body about the hind feet
     const pivot = this.dir > 0 ? -5 : 5;
     ctx.save();
-    ctx.translate(pivot, 0); ctx.rotate(-this.dir * 1.12 * r); ctx.translate(-pivot, 0);
+    ctx.translate(pivot, 0); ctx.rotate(-this.dir * 1.1 * r); ctx.translate(-pivot, 0);
 
-    // ---- TAIL (part 5), behind ----
-    for (let i = this.tail.length - 1; i >= 0; i--) g.B(this.tail[i].x, this.tail[i].y, (3.5 - i * 0.32) + 0.5, P.out);
-    for (let i = this.tail.length - 1; i >= 0; i--) g.B(this.tail[i].x, this.tail[i].y, 3.0 - i * 0.3, (i % 2 === 0) ? P.tail1 : P.tail2);
-    const tip = this.tail[this.tail.length - 1]; g.B(tip.x, tip.y, 1.7, P.tail2);
+    // ---- cloak-TAIL (behind): inked, tapering, pale ring-tips ----
+    for (let i = this.tail.length - 1; i >= 0; i--) g.B(this.tail[i].x, this.tail[i].y, (3.7 - i * 0.34) + 0.6, P.out);
+    for (let i = this.tail.length - 1; i >= 0; i--) {
+      const s = this.tail[i], rad = 3.2 - i * 0.32;
+      g.B(s.x, s.y, rad, P.tail2);
+      if (i % 2 === 1) g.B(s.x, s.y - rad * 0.3, rad * 0.62, P.tail1);   // pale ring band
+    }
+    const tip = this.tail[this.tail.length - 1]; g.B(tip.x, tip.y, 1.7, P.tip);
 
-    // ---- hind legs (the pivot) ----
+    // ---- hind legs (pivot) ----
     this._legQuad(g, P, -6, sBack, 0, true, null);
     this._legQuad(g, P, -3.4, sBack * 0.6, lift * 0.5, true, null);
 
-    // ---- fore legs: planted on all fours, or raised paws when reared ----
+    // ---- fore legs / paws ----
     const fFootY = M.lerp(0, -8, r), fFootX = M.lerp(5.5, 3.2, r);
     this._legQuad(g, P, fFootX, sFore, fFootY < -1 ? 0 : lift, false, fFootY);
     this._legQuad(g, P, fFootX - 2.2, sFore * 0.6, fFootY < -1 ? 0 : lift * 0.5, false, fFootY);
+    if (this.carry) { g.R(fFootX + 1, fFootY - 4, 4, 6, "#546a86"); g.R(fFootX + 1, fFootY - 4, 4, 1, "#cfe0f6"); }
 
-    // ---- torso (part 2): a horizontal back that stands up via the rotation ----
+    // ---- torso: strong inked silhouette + rim light ----
     const bX = -5.5, bY = -6 + bob * 0.5, fX = 5.5, fY = -7 + bob * 0.5;
-    this._capsule(g, bX, bY, fX, fY, 4.7, P.out);
-    this._capsule(g, bX, bY, fX, fY, 4.1, P.fur);
-    this._capsule(g, bX, bY - 1.6, fX, fY - 1.6, 2.4, P.lite);        // back highlight
-    this._capsule(g, bX + 0.5, bY + 1.6, fX - 0.5, fY + 1.6, 2.4, P.belly); // underside
+    this._capsule(g, bX, bY, fX, fY, 5.0, P.out);         // thick outline
+    this._capsule(g, bX, bY, fX, fY, 4.2, P.dark);        // dark body
+    this._capsule(g, bX - 0.5, bY - 2.0, fX - 1, fY - 2.0, 2.3, P.lite);  // top rim light
+    this._capsule(g, bX + 0.7, bY + 1.8, fX - 0.7, fY + 1.8, 2.1, P.belly); // pale underside
 
-    // ---- carried item (in a raised fore paw) ----
-    if (this.carry) { g.R(fFootX + 1, fFootY - 4, 4, 6, "#526673"); g.R(fFootX + 1, fFootY - 4, 4, 1, "#cfd6ff"); }
+    // ---- little red bandana at the neck ----
+    const nkx = M.lerp(3.5, 1.5, r), nky = M.lerp(-7, -12, r);
+    g.R(nkx - 2, nky, 5, 2, P.scarf); g.R(nkx - 2, nky, 5, 1, P.scarfHi);
+    g.R(nkx + 2, nky + 1, 2, 3, P.scarf);   // trailing end
 
-    // ---- head (part 1) + face ----
+    // ---- head + face ----
     this._head(g, P);
 
     // ---- claw swipe when attacking ----
     if (this.state === "attack") {
       const hx = this.head.x, hy = this.head.y;
-      let px = hx + 4, py = hy + 3;
-      if (this.atkDir === "up") { px = hx; py = hy - 7; }
-      else if (this.atkDir === "down") { px = hx; py = hy + 9; }
-      g.B(px, py, 2, P.fur); g.B(px, py, 1.3, P.lite);
-      for (let c = -1; c <= 1; c++) g.R(px + 1 + c, py - 1, 1, 2, "#eef1ff");
+      let px = hx + 5, py = hy + 3;
+      if (this.atkDir === "up") { px = hx + 1; py = hy - 8; }
+      else if (this.atkDir === "down") { px = hx; py = hy + 10; }
+      g.B(px, py, 2.2, P.out); g.B(px, py, 1.5, P.lite);
+      for (let c = -1; c <= 1; c++) g.R(px + 1 + c, py - 1, 1, 2, "#f2f4ff");   // claws
     }
 
     ctx.restore();
   };
 
   Critter.prototype._legQuad = function (g, P, footX, swing, lift, back, footY) {
-    const c = back ? P.dark : P.fur;
+    const c = back ? P.out : P.dark;
     const fx = footX + swing;
     const fy = (footY == null ? 0 : footY) - lift;
     const hipY = -4.5, y0 = Math.min(hipY, fy), h = Math.abs(fy - hipY) + 1.2;
-    g.R(fx - 1.1, y0, 2.2, h, c);
-    g.R(fx - 1.6, fy - 1, 3.2, 2, "#1b1e2e");   // paw
+    g.R(fx - 1.4, y0, 2.8, h, P.out);         // outline
+    g.R(fx - 1.0, y0, 2.0, h, c);
+    g.R(fx - 1.8, fy - 1, 3.6, 2, P.out);     // paw
+    g.R(fx - 1.3, fy - 0.7, 2.6, 1, "#1a1d33");
   };
 
   Critter.prototype._capsule = function (g, x0, y0, x1, y1, r, c) {
@@ -269,43 +279,40 @@
     const hx = this.head.x, hy = this.head.y;
     const hsx = (this.dir > 0 ? hx : -hx);   // head centre in screen space
     const eyeDX = 2.7, eyeY = hy - 0.4;
-    // ---- ears (behind head) ----
+    // ---- ears (behind head): inked, dark, pink inner ----
     for (const side of [-1, 1]) {
       const ang = (side < 0 ? this.earL.x : this.earR.x);
-      const ex = hsx + side * 4.2, ey = hy - 4.9 + ang * 0.3;
-      g.Bs(ex, ey, 2.5, P.out);
-      g.Bs(ex, ey - 0.2, 1.9, P.fur);
-      g.Bs(ex, ey + 0.5, 0.95, P.ear);
+      const ex = hsx + side * 4.4, ey = hy - 5.2 + ang * 0.3;
+      g.Bs(ex, ey, 2.7, P.out);
+      g.Bs(ex, ey - 0.2, 1.9, P.dark);
+      g.Bs(ex, ey + 0.6, 0.9, P.ear);
     }
-    // ---- head ball ----
-    g.Bs(hsx, hy, 6.8, P.out);
-    g.Bs(hsx, hy, 6.1, P.fur);
-    // ---- cream face pattern (lower face + thin bridge stripe) ----
-    g.Bs(hsx, hy + 2.6, 4.2, P.face);
-    g.Rs(Math.round(hsx) - 0.5, hy - 1, 1, 4, P.face);        // thin nose bridge
-    // ---- clean bandit mask band across the eyes ----
-    g.Rs(hsx - 4.4, eyeY - 1.5, 8.8, 3.2, P.mask);
-    g.Bs(hsx - 4.4, eyeY, 1.6, P.mask); g.Bs(hsx + 4.4, eyeY, 1.6, P.mask);  // rounded ends
-    // ---- cream brow tufts above the mask ----
-    for (const side of [-1, 1]) g.Rs(Math.round(hsx + side * eyeDX) - 1, Math.round(eyeY) - 3, 3, 1, P.face);
-    // ---- eyes (big, lots of white, tracking pupil, shine) ----
-    const open = this.blink ? 0.15 : 1;
+    // ---- head: thick outline, dark crown, top rim light ----
+    g.Bs(hsx, hy, 7.4, P.out);
+    g.Bs(hsx, hy, 6.6, P.dark);
+    g.Bs(hsx, hy - 2.6, 5.2, P.lite);          // rim-lit crown
+    // ---- pale face plate (the raccoon's light face) ----
+    g.Bs(hsx, hy + 1.6, 5.4, P.out);
+    g.Bs(hsx, hy + 1.7, 4.7, P.face);
+    g.Bs(hsx, hy + 3.4, 3.4, P.faceShade);     // muzzle shade
+    // ---- dark bandit mask across the eyes ----
+    g.Rs(hsx - 4.6, eyeY - 1.8, 9.2, 3.6, P.mask);
+    g.Bs(hsx - 4.4, eyeY, 1.9, P.mask); g.Bs(hsx + 4.4, eyeY, 1.9, P.mask);
+    // ---- big Hollow-Knight eyes on the mask ----
+    const open = this.blink ? 0.12 : 1;
     for (const side of [-1, 1]) {
       const ex = hsx + side * eyeDX;
       if (open > 0.5) {
-        g.Bs(ex, eyeY, 1.5, P.eye);                           // white
-        const px = ex + this.look.x * 0.8, py = eyeY + this.look.y * 0.7 + 0.1;
-        g.Bs(px, py, 0.82, P.pup);                            // pupil
-        g.Rs(Math.round(px), Math.round(py) - 1, 1, 1, "#ffffff");   // shine
-      } else {
-        g.Rs(Math.round(ex) - 2, Math.round(eyeY), 4, 1, P.eye);
-      }
+        g.Bs(ex, eyeY, 1.9, P.eye);
+        const px = ex + this.look.x * 0.9, py = eyeY + this.look.y * 0.8 + 0.15;
+        g.Bs(px, py, 0.95, P.pup);
+        g.Rs(Math.round(px), Math.round(py) - 1, 1, 1, "#ffffff");
+      } else { g.Rs(Math.round(ex) - 2, Math.round(eyeY), 4, 1, "#0c0d18"); }
     }
-    // ---- expression brows + nose + mouth ----
+    // ---- expression brow + nose + mouth ----
     this._brows(g, P, hsx, eyeY, eyeDX);
-    g.Bs(hsx, hy + 2.4, 1.1, P.nose);
-    g.Rs(Math.round(hsx), Math.round(hy) + 1, 1, 1, "#6a4a5a");   // nose shine
-    this._mouth(g, P, hsx, hy + 4.4);
+    g.Bs(hsx, hy + 3.0, 1.1, P.nose);
+    this._mouth(g, P, hsx, hy + 4.8);
   };
 
   Critter.prototype._brows = function (g, P, hsx, eyeY, dx) {

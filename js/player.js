@@ -14,6 +14,8 @@
   const C = {
     W: 12, H: 14,
     MAXHP: 4, IFRAMES: 1.05, ATK_DUR: 0.16, ATK_CD: 0.28,
+    DASH_SPEED: 305, DASH_DUR: 0.15, DASH_CD: 0.42,
+    SOUL_MAX: 99, FOCUS_COST: 33, FOCUS_TIME: 0.8, SOUL_PER_HIT: 26,
     GRAV: 900, GRAV_HOLD: 560, MAX_FALL: 330, FAST_FALL: 470,
     RUN: 108, ACCEL_G: 950, ACCEL_A: 680, FRIC_G: 1150, FRIC_A: 300,
     JUMP_VY: -292, JUMP_CUT: 0.42,
@@ -48,6 +50,9 @@
     this.expr = "neutral";
     this.hp = C.MAXHP; this.maxHp = C.MAXHP;
     this.iframes = 0; this.atk = 0; this.atkT = 0; this.atkDir = "side"; this.atkHit = null;
+    this.soul = 0; this.soulMax = C.SOUL_MAX;
+    this.dashT = 0; this.dashCd = 0; this.dashDir = 1;
+    this.focusT = 0; this.focusing = false; this._tapL = 9; this._tapR = 9;
     this.critter = new RC.Critter("raccoon");
   }
 
@@ -143,6 +148,39 @@
     // attack
     if (input.pressed("attack") && this.atkT <= 0 && !this.grabbing) this._startAttack(input);
 
+    // dash (double-tap a direction, or the dash key)
+    if (this.dashCd > 0) this.dashCd -= dt;
+    this._tapL += dt; this._tapR += dt;
+    if (input.pressed("left")) { if (this._tapL < 0.26) this._dash(-1); this._tapL = 0; }
+    if (input.pressed("right")) { if (this._tapR < 0.26) this._dash(1); this._tapR = 0; }
+    if (input.pressed("dash")) this._dash(this.dir);
+
+    // active dash overrides normal movement
+    if (this.dashT > 0) {
+      this.dashT -= dt; this.vx = this.dashDir * C.DASH_SPEED; this.vy = 0;
+      this.iframes = Math.max(this.iframes, this.dashT + 0.02);
+      Pt().emit({ kind: "dust", x: this.cx() - this.dashDir * 4, y: this.cy(), vx: -this.dashDir * 20, vy: 0, g: 0, drag: 0.85, life: 0.22, size: 2, color: "#8b90c8" });
+      this._moveX(this.vx * dt);
+      this._detectContacts();
+      if (this.grounded && this.vy > 0) this.vy = 0;
+      this._easeScale(dt); this._pickState(ax, ay); this._updateCritter(dt);
+      return;
+    }
+
+    // focus / heal — hold GRAB while grounded, still, away from a wall
+    this.focusing = false;
+    if (input.is("grab") && this.grounded && this.wallDir === 0 && this.atk <= 0 &&
+      Math.abs(this.vx) < 34 && this.soul >= C.FOCUS_COST && this.hp < this.maxHp && !input.pressed("jump")) {
+      this.focusing = true; this.focusT += dt; this.vx = M.approach(this.vx, 0, 1400 * dt);
+      if (Math.random() < 0.5) Pt().emit({ kind: "dust", x: this.cx() + (Math.random() - 0.5) * 10, y: this.feetY() - 2, vx: 0, vy: -34, g: -10, drag: 0.98, life: 0.5, size: 1, color: "#eaf0ff" });
+      if (this.focusT >= C.FOCUS_TIME) {
+        this.hp = Math.min(this.maxHp, this.hp + 1); this.soul -= C.FOCUS_COST; this.focusT = 0;
+        this.iframes = Math.max(this.iframes, 0.5); RC.Audio.play("heal");
+        Pt().ring(this.cx(), this.cy(), "#eaf0ff", 34); Pt().spark(this.cx(), this.cy(), 12, "#eaf0ff");
+      }
+    }
+    if (!this.focusing) this.focusT = 0;
+
     // timers
     this.coyote = this.grounded ? C.COYOTE : Math.max(0, this.coyote - dt);
     if (input.pressed("jump")) this.buffer = C.BUFFER; else this.buffer = Math.max(0, this.buffer - dt);
@@ -172,7 +210,7 @@
     }
 
     // ---- horizontal movement (unless wall-locked or grabbing) ----
-    if (!this.grabbing && this.lock <= 0) {
+    if (!this.grabbing && this.lock <= 0 && !this.focusing) {
       const accel = this.grounded ? C.ACCEL_G : C.ACCEL_A;
       const fric = this.grounded ? C.FRIC_G : C.FRIC_A;
       if (ax !== 0) {
@@ -291,6 +329,14 @@
     Pt().spark(this.cx() + (this.atkDir === "side" ? this.dir * 12 : 0), this.cy() + (this.atkDir === "down" ? 12 : this.atkDir === "up" ? -12 : 0), 3, "#e6ecff");
   };
 
+  Player.prototype._dash = function (d) {
+    if (this.dashCd > 0 || this.dashT > 0 || this.hidden || this.dead || this.focusing) return;
+    this.dashT = C.DASH_DUR; this.dashCd = C.DASH_CD; this.dashDir = d; this.dir = d; this.faceLockT = C.DASH_DUR + 0.02;
+    this.vx = d * C.DASH_SPEED; this.vy = 0; this.sx = 1.45; this.sy = 0.66;
+    this.iframes = Math.max(this.iframes, C.DASH_DUR + 0.03);
+    RC.Audio.play("dash");
+  };
+
   Player.prototype.getSlashBox = function () {
     const cx = this.cx(), cy = this.cy();
     if (this.atkDir === "up") return { x: cx - 11, y: this.y - 20, w: 22, h: 22 };
@@ -356,6 +402,14 @@
     const x = this.cx() - cam.x;
     const y = this.feetY() - cam.y;
     if (!this.dead) RC.Sprites.shadow(ctx, x, this.feetY() - cam.y + 1, this.w + 6, this.grounded ? 0.3 : 0.16);
+    // focus-heal glow
+    if (this.focusing) {
+      const t = this.focusT / C.FOCUS_TIME, cy2 = this.cy() - cam.y;
+      ctx.save(); ctx.globalCompositeOperation = "lighter";
+      const gr = ctx.createRadialGradient(x, cy2, 1, x, cy2, 15 + t * 7);
+      gr.addColorStop(0, "rgba(230,236,255," + (0.25 + t * 0.4) + ")"); gr.addColorStop(1, "rgba(230,236,255,0)");
+      ctx.fillStyle = gr; ctx.fillRect(x - 24, cy2 - 24, 48, 48); ctx.restore();
+    }
     // i-frame flicker
     if (!(this.iframes > 0 && Math.floor(this.iframes * 22) % 2 === 0)) {
       this.critter.draw(ctx, x, y, { sx: this.sx, sy: this.sy });

@@ -32,6 +32,9 @@ python3 -m http.server 8000
 | Throw / pick up can | `C` |
 | Dive dumpster / hide / drop | `↓` (and `↓`+`Z` to drop through platforms) |
 | **Attack (claw)** | `X` / `K` — hold `↑` for up-slash, `↓` in the air to **pogo** |
+| **Dash** (brief invuln) | double-tap `←`/`→`, or `V` |
+| **Focus / heal** | hold `Shift` on the ground — spends SOUL to refill a mask |
+| Climb walls | hold `Shift` against a wall |
 | Take down an enemy | stomp from above, slash them, or bean them with a thrown can |
 | Open the **city map** / fast-travel | `Tab` / `Q` |
 | Dive a dumpster / hide | `↓` |
@@ -58,12 +61,19 @@ the left, and CLIMB / THROW / JUMP on the right. Tap the screen to advance menus
 
 ## ⚔️ Combat (Hollow-Knight style)
 
-The raccoon is a proper **4-legged animal** that gallops on all fours and **rears
-up on its hind legs to climb and to swipe**. Combat is claw-first: slash forward,
-up, or **pogo** off an enemy's head with a down-slash while airborne. You have a
-row of **health masks**; touching a live enemy costs one (with brief invulnerability
-+ knockback), and at zero you're knocked out and shake it off back at a checkpoint.
-Hits land with hitstop, knockback, sparks, and gore.
+The raccoon — redrawn as an inky, high-contrast little vagabond with a pale masked
+face, big eyes, and a flowing cloak-tail — is a **4-legged animal** that gallops on
+all fours and **rears up on its hind legs to climb and swipe**. Combat is claw-first:
+slash forward, up, or **pogo** off an enemy's head with a down-slash while airborne;
+**dash** through danger with a burst of invulnerability. Landing hits fills a **SOUL**
+orb, which you spend by **holding Focus** to channel and refill a **health mask**.
+Touching a live enemy costs a mask (brief i-frames + knockback); at zero masks you're
+knocked out and shake it off at a checkpoint. Hitstop, knockback, sparks, and gore
+throughout.
+
+The whole interface is **near-wordless** — a hand-drawn ink city map with landmark
+icons, icon health masks + soul orb, dish/ingredient icons, and glyph prompts instead
+of text.
 
 ## 🗺️ The city (map + fast travel)
 

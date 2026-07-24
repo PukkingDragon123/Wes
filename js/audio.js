@@ -151,6 +151,9 @@
           this._noise(t, 0.12, 0.2, this.sfxBus, 1200); break;
         case "heal":
           [523, 784, 1047].forEach((f, i) => this._blip(f, t + i * 0.06, 0.3, "sine", 0.12, this.sfxBus)); break;
+        case "dash":
+          this._noise(t, 0.14, 0.16, this.sfxBus, 3800, "bandpass");
+          this._blip(520, t, 0.12, "triangle", 0.08, this.sfxBus, 180); break;
         case "select":
           this._blip(520, t, 0.06, "square", 0.09, this.sfxBus); break;
         case "confirm":

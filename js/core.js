@@ -124,6 +124,7 @@
     down:    ["ArrowDown", "KeyS"],
     jump:    ["KeyZ", "Space"],
     attack:  ["KeyX", "KeyK", "KeyF"],
+    dash:    ["KeyV", "KeyN"],
     grab:    ["ShiftLeft", "ShiftRight", "KeyL"],
     throw:   ["KeyC", "KeyJ"],
     action:  ["KeyE", "Enter"],

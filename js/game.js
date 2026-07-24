@@ -81,7 +81,7 @@
         switch (sp.type) {
           case "player": this.player = new RC.Player(sp.x, sp.y, this); break;
           case "kid": this.kids.push(new RC.Ent.Kid(sp)); break;
-          case "hint": this.hints.push(new RC.Ent.Hint(sp)); break;
+          case "hint": break;   // near-zero text: tutorial signs replaced by icon prompts
           case "dumpster": this.spots.push(new RC.Ent.HideSpot({ kind: "dumpster", x: sp.x, y: sp.y, ingredients: sp.ingredients || [] })); break;
           case "crate": this.spots.push(new RC.Ent.HideSpot({ kind: "crate", x: sp.x, y: sp.y, size: sp.size })); break;
           case "ing": this.loot.push(new RC.Ent.Loot({ type: sp.ing, x: sp.x, y: sp.y })); break;
@@ -144,7 +144,7 @@
 
     _globalKeys() {
       if (Input.anyPressed) Audio.resume();
-      if (Input.pressed("mute")) { const on = Audio.toggle(); this._toast(on ? "SOUND ON" : "SOUND OFF"); }
+      if (Input.pressed("mute")) Audio.toggle();
       if (Input.pressed("pause")) {
         if (this.state === "play") { this.state = "pause"; Audio.play("select"); }
         else if (this.state === "pause") { this.state = "play"; Audio.play("select"); }
@@ -204,12 +204,12 @@
       // idle-animate the kids & player in the alley
       for (const k of this.kids) k.update(dt);
       this.player.animT += dt;
-      this.portraitCritter.update(dt, { grounded: true, vx: 0, state: "idle", dir: 1, expr: this.introI < 3 ? "sad" : "determined", look: { x: 0.3, y: 0 } });
+      this.portraitCritter.update(dt, { grounded: true, vx: 0, state: "idle", dir: 1, expr: this.introI < 2 ? "sad" : "determined", look: { x: 0.3, y: 0 } });
       if (Input.pressed("confirm") || Input.pressed("jump")) {
         Audio.play("select");
         this.introI++;
         this.introT = 0;
-        if (this.introI >= INTRO_LINES.length) this._beginPlay();
+        if (this.introI >= 3) this._beginPlay();
       }
       if (Input.pressed("pause")) this._beginPlay();  // skip
     },
@@ -219,7 +219,6 @@
       this.runStart = this.time;
       this.fade = 1; this.fadeDir = -1;
       Audio.startMusic();
-      this._toast("GATHER FOOD · COOK AT HOME · FEED YOUR KITS");
     },
 
     _updPlay(dt) {
@@ -236,6 +235,7 @@
           if (M.aabb(box.x, box.y, box.w, box.h, a.x, a.y, a.w, a.h)) {
             pl.atkHit[i] = true;
             if (g.hit) g.hit(1, pl.cx());
+            pl.soul = Math.min(pl.soulMax, pl.soul + RC.PlayerConfig.SOUL_PER_HIT);
             this.hitstop = Math.max(this.hitstop, 0.05);
             Pt.spark(box.x + box.w / 2, box.y + box.h / 2, 6, "#e6ecff");
             if (pl.atkDir === "down") { pl.vy = -300; pl.atk = 0; }   // pogo bounce
@@ -281,7 +281,7 @@
           (Input.pressed("action") || (Input.pressed("throw") && !pl.carry))) {
           const k = this.cookableKid();
           if (k) this.startCook(k.recipe, k);
-          else this._toast("NO DISH READY — GO GATHER FOOD");
+          else Audio.play("bad");
         }
       }
       if (this.stove) this.stove.t += dt;
@@ -294,7 +294,6 @@
             if (g.hit) g.hit(3, pl.cx()); else g.die(pl.cx() < g.x ? -1 : 1);
             pl.vy = -260; pl.sx = 1.3; pl.sy = 0.7;
             this.hitstop = 0.08; this.flash = 0.4; this.flashColor = "200,40,55";
-            this._toast("STOMP!");
             break;
           }
         }
@@ -321,7 +320,7 @@
       // discover districts on foot; open the city map with Tab/Q
       for (const d of this.districts) {
         if (!d.unlocked && Math.abs(pl.cx() - d.x) < 64 && Math.abs(pl.feetY() - d.y) < 44) {
-          d.unlocked = true; this._toast("DISTRICT FOUND: " + d.name); Audio.play("checkpoint"); Pt.spark(pl.cx(), pl.cy() - 12, 10, P.good);
+          d.unlocked = true; Audio.play("checkpoint"); Pt.spark(pl.cx(), pl.cy() - 12, 12, P.good); Pt.ring(pl.cx(), pl.cy() - 8, P.good, 30);
         }
       }
       if (Input.pressed("map")) { this.state = "map"; Audio.play("select"); return; }
@@ -330,8 +329,7 @@
       for (const cp of this.checkpoints) {
         if (!cp.taken && pl.grounded && !pl.hidden && pl.cx() > cp.x - 4 && Math.abs(pl.feetY() - cp.y) < 22) {
           cp.taken = true; this.checkpoint = { x: cp.x, y: cp.y };
-          this._toast("CHECKPOINT"); Audio.play("checkpoint");
-          Pt.spark(cp.x, cp.y - 16, 14, P.good);
+          Audio.play("checkpoint"); Pt.spark(cp.x, cp.y - 16, 14, P.good);
         }
       }
 
@@ -377,31 +375,66 @@
         if (d.unlocked) {
           const pl = this.player; pl.x = d.x - pl.w / 2; pl.y = d.y - pl.h; pl.vx = pl.vy = 0; pl.hidden = false;
           for (const g of this.guards) g.reset(); this.throwables.length = 0;
-          L.focusCamera(pl.cx(), pl.cy()); Audio.play("confirm"); this._toast("TRAVELED TO " + d.name); this.state = "play";
+          L.focusCamera(pl.cx(), pl.cy()); Audio.play("confirm"); Pt.spark(pl.cx(), pl.cy() - 10, 14, P.good); this.state = "play";
         } else Audio.play("bad");
       }
     },
-    _drawMap(ctx) {
-      ctx.fillStyle = "rgba(6,6,16,0.92)"; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
-      // faint skyline flavor
-      Font.draw(ctx, "NIGHT CITY", VIEW_W / 2, 26, { align: "center", color: P.gold, scale: 2, tracking: 3, shadow: true });
-      Font.draw(ctx, "FAST TRAVEL", VIEW_W / 2, 48, { align: "center", color: P.textDim, scale: 1, tracking: 1 });
-      const n = this.districts.length, y = VIEW_H / 2, x0 = 64, x1 = VIEW_W - 64;
-      // route line
-      ctx.strokeStyle = "#3a3466"; ctx.lineWidth = 2; ctx.setLineDash([4, 4]);
-      ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); ctx.setLineDash([]);
-      for (let i = 0; i < n; i++) {
-        const d = this.districts[i], nx = Math.round(x0 + (x1 - x0) * (i / (n - 1))), sel = i === this.mapSel;
-        // node
-        ctx.fillStyle = d.unlocked ? (sel ? P.gold : P.good) : "#3a3f52";
-        ctx.beginPath(); ctx.arc(nx, y, sel ? 7 : 5, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "#0e0c1c"; ctx.beginPath(); ctx.arc(nx, y, sel ? 4 : 3, 0, Math.PI * 2); ctx.fill();
-        if (!d.unlocked) Font.draw(ctx, "?", nx, y - 4, { align: "center", color: P.textDim, scale: 1 });
-        if (sel) { ctx.strokeStyle = P.gold; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(nx, y, 10 + Math.sin(this.time * 6), 0, Math.PI * 2); ctx.stroke(); }
-        Font.draw(ctx, d.name, nx, y + 14, { align: "center", color: d.unlocked ? (sel ? P.text : P.textDim) : "#4c4f6b", scale: 1 });
-        if (i > 0 && this.districts[i - 1].unlocked && d.unlocked) { /* shortcut open */ }
+    // wobbly hand-drawn helpers (deterministic jitter by seed)
+    _ink(ctx, ax, ay, bx, by, seed) {
+      const seg = 6, jit = 1.1; ctx.beginPath(); ctx.moveTo(ax, ay);
+      for (let i = 1; i <= seg; i++) { const t = i / seg; const jx = Math.sin(seed + i * 2.3) * jit, jy = Math.cos(seed + i * 1.7) * jit; ctx.lineTo(ax + (bx - ax) * t + jx, ay + (by - ay) * t + jy); }
+      ctx.stroke();
+    },
+    _inkCircle(ctx, cx, cy, r, seed) {
+      const seg = 14; ctx.beginPath();
+      for (let i = 0; i <= seg; i++) { const a = (i / seg) * Math.PI * 2; const rr = r + Math.sin(seed + i * 1.9) * 0.9; const px = cx + Math.cos(a) * rr, py = cy + Math.sin(a) * rr; if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); }
+      ctx.stroke();
+    },
+    _mapIcon(ctx, i, X, y, c) {
+      ctx.strokeStyle = c; ctx.fillStyle = c; ctx.lineWidth = 1;
+      if (i === 0) { // den: little tent/house + heart
+        ctx.beginPath(); ctx.moveTo(X - 6, y + 5); ctx.lineTo(X, y - 5); ctx.lineTo(X + 6, y + 5); ctx.closePath(); ctx.stroke();
+        ctx.fillStyle = "#c0433c"; ctx.fillRect(X - 1, y, 2, 2);
+      } else if (i === 1) { // rooftops: skyline zigzag
+        ctx.beginPath(); ctx.moveTo(X - 7, y + 5); ctx.lineTo(X - 7, y - 1); ctx.lineTo(X - 3, y - 1); ctx.lineTo(X - 3, y - 5); ctx.lineTo(X + 1, y - 5); ctx.lineTo(X + 1, y + 1); ctx.lineTo(X + 5, y + 1); ctx.lineTo(X + 5, y - 3); ctx.lineTo(X + 7, y - 3); ctx.lineTo(X + 7, y + 5); ctx.stroke();
+      } else if (i === 2) { // market: stall w/ awning
+        ctx.strokeRect(X - 5, y - 1, 10, 6); ctx.beginPath(); ctx.moveTo(X - 7, y - 1); ctx.lineTo(X - 4, y - 5); ctx.lineTo(X + 4, y - 5); ctx.lineTo(X + 7, y - 1); ctx.stroke();
+      } else { // scrapyard: gear
+        this._inkCircle(ctx, X, y, 4, i * 5); for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; ctx.fillRect(Math.round(X + Math.cos(a) * 6) - 1, Math.round(y + Math.sin(a) * 6) - 1, 2, 2); }
       }
-      Font.draw(ctx, "< >  SELECT      Z  TRAVEL      TAB/ESC  CLOSE", VIEW_W / 2, VIEW_H - 22, { align: "center", color: P.textDim, scale: 1 });
+    },
+    _drawMap(ctx) {
+      ctx.fillStyle = "rgba(8,7,16,0.9)"; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+      const px = 44, py = 40, pw = VIEW_W - 88, ph = VIEW_H - 80;
+      ctx.fillStyle = "#181630"; ctx.fillRect(px, py, pw, ph);
+      ctx.fillStyle = "#20203c"; ctx.fillRect(px + 3, py + 3, pw - 6, ph - 6);
+      ctx.strokeStyle = "#8b90c8"; ctx.lineWidth = 1;
+      this._ink(ctx, px + 7, py + 7, px + pw - 7, py + 7, 1); this._ink(ctx, px + pw - 7, py + 7, px + pw - 7, py + ph - 7, 2);
+      this._ink(ctx, px + pw - 7, py + ph - 7, px + 7, py + ph - 7, 3); this._ink(ctx, px + 7, py + ph - 7, px + 7, py + 7, 4);
+      // ink speckle
+      const rng = RC.makeRng(7); ctx.fillStyle = "rgba(139,144,200,0.16)";
+      for (let i = 0; i < 46; i++) ctx.fillRect(px + rng.int(8, pw - 8), py + rng.int(8, ph - 8), 1, 1);
+      // a hand-drawn raccoon-mask compass in the corner
+      ctx.strokeStyle = "#5b6191"; this._inkCircle(ctx, px + pw - 22, py + 22, 8, 20);
+      ctx.fillStyle = "#e2e4f4"; ctx.fillRect(px + pw - 27, py + 20, 4, 3); ctx.fillRect(px + pw - 20, py + 20, 4, 3);
+      // route + node landmarks (no labels)
+      const n = this.districts.length, y = py + ph * 0.56, x0 = px + 46, x1 = px + pw - 46;
+      const nx = (i) => Math.round(x0 + (x1 - x0) * (i / (n - 1)));
+      ctx.strokeStyle = "#5b6191"; ctx.lineWidth = 1;
+      for (let i = 0; i < n - 1; i++) this._ink(ctx, nx(i), y, nx(i + 1), y, 10 + i * 13);
+      for (let i = 0; i < n; i++) {
+        const d = this.districts[i], X = nx(i), sel = i === this.mapSel;
+        ctx.strokeStyle = d.unlocked ? "#8b90c8" : "#3a3f5e";
+        this._inkCircle(ctx, X, y, 12, i * 7);
+        if (d.unlocked) this._mapIcon(ctx, i, X, y, sel ? "#f2d27a" : "#aeb3dc");
+        else { ctx.strokeStyle = "#3a3f5e"; this._ink(ctx, X - 3, y - 3, X + 3, y + 3, i); this._ink(ctx, X + 3, y - 3, X - 3, y + 3, i + 1); } // scribble-out
+        if (sel) { ctx.strokeStyle = "#f2d27a"; this._inkCircle(ctx, X, y, 15 + Math.sin(this.time * 6), 100 + ((this.time * 4) | 0)); }
+      }
+      // textless controls hint: ‹  ◇  › glyphs, faint
+      ctx.strokeStyle = "#5b6191";
+      ctx.beginPath(); ctx.moveTo(VIEW_W / 2 - 34, VIEW_H - 30); ctx.lineTo(VIEW_W / 2 - 40, VIEW_H - 26); ctx.lineTo(VIEW_W / 2 - 34, VIEW_H - 22); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(VIEW_W / 2 + 34, VIEW_H - 30); ctx.lineTo(VIEW_W / 2 + 40, VIEW_H - 26); ctx.lineTo(VIEW_W / 2 + 34, VIEW_H - 22); ctx.stroke();
+      ctx.fillStyle = "#8b90c8"; ctx.fillRect(VIEW_W / 2 - 2, VIEW_H - 28, 4, 4);
     },
 
     _beginWon() {
@@ -420,25 +453,32 @@
       L.updateCamera(this.player.cx(), this.player.cy(), 0, dt);
       if (this.wonT > 1 && Input.pressed("confirm")) this._toTitle();
     },
+    // wordless ending — a row of full hearts + the dishes cooked, then a glyph
     _drawWon(ctx) {
-      ctx.fillStyle = "rgba(10,8,20,0.62)"; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
-      Font.draw(ctx, "YOU FED THE FAMILY", VIEW_W / 2, 34, { align: "center", color: P.gold, scale: 2, tracking: 2, shadow: true });
-      Font.draw(ctx, "EVERY BELLY FULL. EVERY KIT ASLEEP.", VIEW_W / 2, 58, { align: "center", color: P.text, scale: 1 });
-      const mins = Math.floor(this.runTime / 60), secs = (this.runTime % 60) | 0;
-      const rows = [
-        ["DISHES COOKED", "" + this.dishesMade],
-        ["KITS FED", this.kids.filter((k) => k.fed).length + "/" + this.kids.length],
-        ["TIMES BUSTED", "" + this.deaths],
-        ["TIME", (mins + "").padStart(2, "0") + ":" + (secs + "").padStart(2, "0")],
-      ];
-      for (let i = 0; i < rows.length; i++) {
-        const y = 84 + i * 14;
-        Font.draw(ctx, rows[i][0], VIEW_W / 2 - 74, y, { color: P.textDim, scale: 1 });
-        Font.draw(ctx, rows[i][1], VIEW_W / 2 + 74, y, { align: "right", color: P.goldHi, scale: 1 });
+      ctx.fillStyle = "rgba(10,8,20,0.66)"; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+      const cx = VIEW_W / 2;
+      // three big hearts (the fed kits), gently beating
+      for (let i = 0; i < this.kids.length; i++) {
+        const hx = cx + (i - (this.kids.length - 1) / 2) * 34, beat = 1 + Math.sin(this.time * 4 + i) * 0.12;
+        ctx.save(); ctx.translate(hx, 60); ctx.scale(beat, beat);
+        S.heart(ctx, -3, -3, true); ctx.restore();
       }
-      const grade = this.deaths === 0 ? "PERFECT PROVIDER" : this.deaths < 3 ? "GOOD DAD" : "SCRAPPY BUT LOVING";
-      Font.draw(ctx, grade, VIEW_W / 2, 150, { align: "center", color: P.good, scale: 1, tracking: 1 });
-      if ((this.time % 1) < 0.6) Font.draw(ctx, "PRESS Z — ANOTHER NIGHT", VIEW_W / 2, VIEW_H - 18, { align: "center", color: P.text, scale: 1 });
+      // the dishes cooked, on little plates
+      for (let i = 0; i < this.dishesMade; i++) {
+        const dx = cx + (i - (this.dishesMade - 1) / 2) * 40;
+        const rec = this.kids[i] && this.kids[i].recipe; if (rec) RC.Food.drawDish(ctx, dx, 120, rec, 1);
+      }
+      // grade as pips (stars); fewer busts = more
+      const stars = this.deaths === 0 ? 3 : this.deaths < 3 ? 2 : 1;
+      for (let i = 0; i < 3; i++) {
+        ctx.fillStyle = i < stars ? P.gold : "#3a3f5e";
+        const sx = cx + (i - 1) * 14;
+        ctx.beginPath();
+        for (let k = 0; k < 5; k++) { const a = -Math.PI / 2 + k * (Math.PI * 2 / 5); const r = 4; const px = sx + Math.cos(a) * r, py = 150 + Math.sin(a) * r; k ? ctx.lineTo(px, py) : ctx.moveTo(px, py); const a2 = a + Math.PI / 5; ctx.lineTo(sx + Math.cos(a2) * 1.7, 150 + Math.sin(a2) * 1.7); }
+        ctx.closePath(); ctx.fill();
+      }
+      // continue glyph
+      if ((this.time % 1) < 0.6) { ctx.strokeStyle = "#e6e8f6"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, VIEW_H - 26, 7, 0, Math.PI * 2); ctx.stroke(); ctx.fillStyle = "#e6e8f6"; ctx.beginPath(); ctx.arc(cx, VIEW_H - 26, 2, 0, Math.PI * 2); ctx.fill(); }
     },
 
     _beginWin() {
@@ -576,46 +616,50 @@
     },
 
     // ---- HUD ----------------------------------------------------------
-    _drawHUD(ctx) {
-      // kits' wanted dishes (top-left cards)
-      for (let i = 0; i < this.kids.length; i++) {
-        const k = this.kids[i], bx = 4 + i * 56, by = 4, bw = 52, bh = 28;
-        ctx.fillStyle = "rgba(10,10,22,0.6)"; ctx.fillRect(bx, by, bw, bh);
-        ctx.fillStyle = k.fed ? "rgba(103,224,163,0.95)" : "rgba(120,126,180,0.5)"; ctx.fillRect(bx, by, bw, 1);
-        Font.draw(ctx, "KIT" + (i + 1), bx + 3, by + 3, { color: P.textDim, scale: 1 });
-        if (k.fed) Font.draw(ctx, "FED", bx + bw - 3, by + 3, { align: "right", color: P.good, scale: 1 });
-        if (k.recipe) {
-          for (let j = 0; j < k.recipe.ing.length; j++) {
-            const id = k.recipe.ing[j], gx = bx + 9 + j * 13, gy = by + 18;
-            RC.Food.drawIngredient(ctx, gx, gy, id, 1);
-            if (!k.fed && (this.inv[id] || 0) === 0) { ctx.fillStyle = "rgba(12,8,16,0.55)"; ctx.fillRect(gx - 4, gy - 4, 8, 8); }
-          }
-        }
-      }
-      // health masks (top-right)
-      for (let i = 0; i < this.player.maxHp; i++) S.heart(ctx, VIEW_W - 11 - i * 10, 8, i < this.player.hp);
-      // inventory bag (bottom-left)
-      let ix = 8; const iy = VIEW_H - 12;
-      Font.draw(ctx, "BAG", ix, iy - 1, { color: P.textDim, scale: 1 }); ix += 24;
-      let anyBag = false;
-      for (const id of RC.Food.ids) {
-        const n = this.inv[id] || 0; if (n <= 0) continue; anyBag = true;
-        RC.Food.drawIngredient(ctx, ix + 4, iy + 3, id, 1);
-        Font.draw(ctx, "" + n, ix + 10, iy, { color: P.text, scale: 1 });
-        ix += 18;
-      }
-      if (!anyBag) Font.draw(ctx, "EMPTY", ix, iy - 1, { color: P.textDim, scale: 1 });
+    _check(ctx, x, y, c) { ctx.strokeStyle = c; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x, y + 1); ctx.lineTo(x + 2, y + 3); ctx.lineTo(x + 5, y - 2); ctx.stroke(); },
 
-      // detection meter (top center) when something is watching
+    _drawHUD(ctx) {
+      // kits' wanted dishes — dish plate + ingredient icons + a check when fed
+      for (let i = 0; i < this.kids.length; i++) {
+        const k = this.kids[i], bx = 5 + i * 50, by = 5, bw = 46, bh = 26;
+        ctx.fillStyle = "rgba(10,10,22,0.55)"; ctx.fillRect(bx, by, bw, bh);
+        ctx.fillStyle = k.fed ? "rgba(103,224,163,0.95)" : "rgba(120,126,180,0.45)"; ctx.fillRect(bx, by, bw, 1);
+        if (k.recipe) for (let j = 0; j < k.recipe.ing.length; j++) {
+          const id = k.recipe.ing[j], gx = bx + 9 + j * 12, gy = by + 13;
+          RC.Food.drawIngredient(ctx, gx, gy, id, 1);
+          if (!k.fed && (this.inv[id] || 0) === 0) { ctx.fillStyle = "rgba(12,8,16,0.6)"; ctx.fillRect(gx - 4, gy - 4, 8, 8); }
+        }
+        if (k.fed) this._check(ctx, bx + bw - 8, by + 4, P.good);
+      }
+      // health masks + soul orb (top-right)
+      for (let i = 0; i < this.player.maxHp; i++) S.heart(ctx, VIEW_W - 11 - i * 10, 8, i < this.player.hp);
+      const ox = VIEW_W - 15, oy = 26, orr = 6, sf = this.player.soul / this.player.soulMax;
+      ctx.fillStyle = "#0e0c1c"; ctx.beginPath(); ctx.arc(ox, oy, orr + 1.5, 0, Math.PI * 2); ctx.fill();
+      ctx.save(); ctx.beginPath(); ctx.arc(ox, oy, orr, 0, Math.PI * 2); ctx.clip();
+      ctx.fillStyle = "#dfe6ff"; ctx.fillRect(ox - orr, oy + orr - 2 * orr * sf, orr * 2, 2 * orr * sf);
+      ctx.restore();
+      ctx.strokeStyle = this.player.soul >= RC.PlayerConfig.FOCUS_COST ? "#eaf0ff" : "#5a5f86"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(ox, oy, orr, 0, Math.PI * 2); ctx.stroke();
+
+      // inventory bag (bottom-left) — a satchel icon then ingredient icons + counts
+      let ix = 8; const iy = VIEW_H - 12;
+      ctx.fillStyle = "#6b4e2e"; ctx.fillRect(ix, iy - 4, 10, 9); ctx.fillStyle = "#8a6a44"; ctx.fillRect(ix, iy - 4, 10, 2); ctx.fillStyle = "#4a341c"; ctx.fillRect(ix + 4, iy - 6, 2, 3);
+      ix += 16;
+      for (const id of RC.Food.ids) {
+        const n = this.inv[id] || 0; if (n <= 0) continue;
+        RC.Food.drawIngredient(ctx, ix + 4, iy + 1, id, 1);
+        if (n > 1) Font.draw(ctx, "" + n, ix + 9, iy, { color: P.text, scale: 1 });
+        ix += 16;
+      }
+
+      // detection — an eye icon that opens & reddens (no words)
       if (this.detectShown > 0.02) {
-        const bw = 90, bx = VIEW_W / 2 - bw / 2, by = 8;
-        ctx.fillStyle = "rgba(10,10,22,0.6)"; ctx.fillRect(bx - 2, by - 2, bw + 4, 9);
-        ctx.fillStyle = "#26243a"; ctx.fillRect(bx, by, bw, 5);
-        const d = M.sat(this.detectShown);
+        const d = M.sat(this.detectShown), ex = VIEW_W / 2, ey = 12;
         const col = d >= 0.85 ? P.bad : d >= 0.33 ? P.detect : P.vis;
-        ctx.fillStyle = col; ctx.fillRect(bx, by, bw * d, 5);
-        Font.draw(ctx, d >= 0.85 ? "SPOTTED!" : "DETECTION", VIEW_W / 2, by + 8, { align: "center", color: col, scale: 1 });
-        // red edge pulse when high
+        const w = 8 + d * 6, h = 3 + d * 4;
+        ctx.strokeStyle = col; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.ellipse(ex, ey, w, h, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = col; ctx.beginPath(); ctx.arc(ex, ey, 1.5 + d * 1.5, 0, Math.PI * 2); ctx.fill();
         if (d > 0.5) {
           ctx.save(); ctx.globalAlpha = (d - 0.5) * 0.5;
           const g = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.45, VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.8);
@@ -624,34 +668,24 @@
         }
       }
 
-      // hide-spot prompt when standing next to a dumpster/crate
+      // hide/dive prompt — a bouncing down-chevron over the spot (no words)
       if (!this.player.hidden) {
         const s = this.spots.find((sp) => sp.near(this.player));
         if (s) {
-          const bob = Math.sin(this.time * 6) * 1;
-          Font.draw(ctx, s.hasLoot ? "v DIVE" : "v HIDE", s.cx - L.camX(), s.topY - L.camY() - 12 + bob, { align: "center", color: P.gold, scale: 1, shadow: true });
+          const bob = Math.sin(this.time * 6) * 1.5, gx = s.cx - L.camX(), gy = s.topY - L.camY() - 12 + bob;
+          ctx.fillStyle = s.hasLoot ? P.gold : "#aeb3dc";
+          ctx.beginPath(); ctx.moveTo(gx - 4, gy); ctx.lineTo(gx + 4, gy); ctx.lineTo(gx, gy + 5); ctx.fill();
         }
       }
-      // stove cook prompt
+      // stove cook prompt — a pot icon, steaming when a dish is ready
       if (this.stove && !this.player.hidden && Math.abs(this.player.cx() - this.stove.cx) < 20 && this.player.grounded) {
-        const k = this.cookableKid();
-        Font.draw(ctx, k ? "C: COOK " + k.recipe.name : "NEED FOOD", this.stove.cx - L.camX(), this.stove.topY - L.camY() - 18, { align: "center", color: k ? P.gold : P.textDim, scale: 1, shadow: true });
+        const ready = !!this.cookableKid(), gx = this.stove.cx - L.camX(), gy = this.stove.topY - L.camY() - 20;
+        ctx.fillStyle = ready ? P.gold : "#5a5f86";
+        ctx.fillRect(gx - 5, gy, 10, 5); ctx.fillRect(gx - 6, gy, 12, 1);
+        if (ready) { ctx.fillStyle = "rgba(230,236,255,0.6)"; const s2 = Math.sin(this.time * 5); ctx.fillRect(gx - 2 + s2, gy - 4, 1, 3); ctx.fillRect(gx + 1 - s2, gy - 5, 1, 3); }
       }
 
-      // carry indicator
-      if (this.player.carry) Font.draw(ctx, "C: THROW " + this.player.carry.toUpperCase(), VIEW_W - 6, VIEW_H - 12, { align: "right", color: P.text, scale: 1, shadow: true });
-
-      // off-screen exit arrow
-      if (this.pad) {
-        const dx = this.pad.cx - this.player.cx();
-        if (Math.abs(dx) > VIEW_W / 2) {
-          const ax = dx > 0 ? VIEW_W - 10 : 10;
-          Font.draw(ctx, dx > 0 ? ">" : "<", ax, 40, { align: "center", color: P.gold, scale: 1 });
-          Font.draw(ctx, "EXIT", ax, 48, { align: "center", color: P.textDim, scale: 1 });
-        }
-      }
-
-      // toast
+      // toast (kept for the rare essential beat)
       if (this.msgT > 0) {
         ctx.globalAlpha = M.sat(this.msgT);
         Font.draw(ctx, this.msg, VIEW_W / 2, VIEW_H - 26, { align: "center", color: P.text, scale: 1, shadow: true });
@@ -693,24 +727,47 @@
       ctx.globalAlpha = 0.12; ctx.fillStyle = "#ffcf7a";
       ctx.fillRect(rx + 14, groundY + 3, 30, 2); ctx.globalAlpha = 1;
 
-      // title
+      // title logo (the game's name — the only lasting text)
       const bob = Math.sin(this.time * 1.5) * 1;
-      Font.draw(ctx, "BROKE @$$", 20, 22 + bob, { align: "left", color: P.gold, scale: 3, tracking: 2, shadow: true, shadowColor: "rgba(0,0,0,0.8)" });
-      Font.draw(ctx, "RACCOON", 20, 50 + bob, { align: "left", color: P.goldHi, scale: 3, tracking: 3, shadow: true, shadowColor: "rgba(0,0,0,0.8)" });
-      Font.draw(ctx, "ALL HE WANTS IS TO FEED HIS KIDS", 22, 78, { align: "left", color: P.textDim, scale: 1, tracking: 1 });
-
-      // prompt
-      if ((this.time % 1) < 0.6) Font.draw(ctx, "PRESS  Z  /  TAP  TO START", VIEW_W / 2, VIEW_H - 40, { align: "center", color: P.text, scale: 1, shadow: true });
-      Font.draw(ctx, "MOVE < >   JUMP Z   CLIMB X   THROW C   HIDE v", VIEW_W / 2, VIEW_H - 20, { align: "center", color: P.textDim, scale: 1 });
+      Font.draw(ctx, "BROKE @$$", 20, 24 + bob, { align: "left", color: P.gold, scale: 3, tracking: 2, shadow: true, shadowColor: "rgba(0,0,0,0.8)" });
+      Font.draw(ctx, "RACCOON", 20, 54 + bob, { align: "left", color: P.goldHi, scale: 3, tracking: 3, shadow: true, shadowColor: "rgba(0,0,0,0.8)" });
+      // pulsing "press / tap" button glyph — no words
+      const gy = VIEW_H - 34, pr = 8 + Math.sin(this.time * 4) * 1.5;
+      ctx.save(); ctx.globalAlpha = 0.45 + 0.45 * Math.sin(this.time * 4);
+      ctx.strokeStyle = "#e6e8f6"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(VIEW_W / 2, gy, pr, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = "#e6e8f6"; ctx.beginPath(); ctx.arc(VIEW_W / 2, gy, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
       L.drawRain(ctx, 1 / 60);
     },
 
     // ---- intro --------------------------------------------------------
+    // wordless intro — a thought bubble over the den cycles through icon beats
     _drawIntro(ctx) {
-      // darken scene a touch
-      ctx.fillStyle = "rgba(6,6,18,0.35)"; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
-      const line = INTRO_LINES[Math.min(this.introI, INTRO_LINES.length - 1)];
-      this._dialogue(ctx, line[0], line[1], "PRESS Z");
+      ctx.fillStyle = "rgba(6,6,18,0.4)"; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+      const bx = Math.round(this.player.cx() - L.camX()), by = Math.round(this.player.feetY() - L.camY() - 46);
+      // bubble
+      ctx.fillStyle = "rgba(238,240,255,0.96)"; ctx.fillRect(bx - 18, by - 16, 36, 26);
+      ctx.fillRect(bx - 16, by - 18, 32, 30);
+      ctx.beginPath(); ctx.moveTo(bx - 6, by + 8); ctx.lineTo(bx + 4, by + 8); ctx.lineTo(bx - 3, by + 16); ctx.fill();
+      const b = this.introI, cx = bx, cy = by - 3;
+      ctx.save();
+      if (b === 0) {           // hungry kits: empty bowl + a frown
+        ctx.strokeStyle = "#3a2a44"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(cx, cy, 7, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();      // bowl
+        ctx.fillStyle = "#c0433c"; ctx.beginPath(); ctx.arc(cx, cy - 2, 2, Math.PI, 0); ctx.fill(); // sad
+        ctx.strokeStyle = "#3a2a44"; ctx.beginPath(); ctx.moveTo(cx - 3, cy + 3); ctx.lineTo(cx + 3, cy + 3); ctx.stroke();
+      } else if (b === 1) {    // go dig: a green dumpster + up-arrow of food
+        ctx.fillStyle = "#3f6b4a"; ctx.fillRect(cx - 7, cy - 1, 14, 8); ctx.fillStyle = "#2c4c36"; ctx.fillRect(cx - 8, cy - 3, 16, 2);
+        RC.Food.drawIngredient(ctx, cx, cy - 8, "fish", 1);
+        ctx.fillStyle = "#f2d27a"; ctx.beginPath(); ctx.moveTo(cx - 3, cy - 12); ctx.lineTo(cx + 3, cy - 12); ctx.lineTo(cx, cy - 15); ctx.fill();
+      } else {                 // cook & love: a pot + a heart
+        ctx.fillStyle = "#4a4a55"; ctx.fillRect(cx - 7, cy, 14, 5); ctx.fillStyle = "#6a6a7a"; ctx.fillRect(cx - 8, cy - 1, 16, 1);
+        S.heart(ctx, cx - 2, cy - 8, true);
+      }
+      ctx.restore();
+      // advance glyph
+      if ((this.time % 1) < 0.6) { ctx.fillStyle = "#3a2a44"; ctx.beginPath(); ctx.arc(bx + 12, by + 6, 1.6, 0, Math.PI * 2); ctx.fill(); }
     },
 
     _dialogue(ctx, who, text, prompt) {
@@ -728,18 +785,23 @@
     },
 
     _drawPause(ctx) {
-      ctx.fillStyle = "rgba(6,6,16,0.7)"; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
-      Font.draw(ctx, "PAUSED", VIEW_W / 2, VIEW_H / 2 - 20, { align: "center", color: P.text, scale: 3, tracking: 2, shadow: true });
-      Font.draw(ctx, "ESC: RESUME    M: SOUND " + (Audio.enabled ? "ON" : "OFF"), VIEW_W / 2, VIEW_H / 2 + 12, { align: "center", color: P.textDim, scale: 1 });
-      Font.draw(ctx, "$" + this.cash + "   FOOD " + this.food + "   BUSTS " + this.deaths, VIEW_W / 2, VIEW_H / 2 + 26, { align: "center", color: P.textDim, scale: 1 });
+      ctx.fillStyle = "rgba(6,6,16,0.72)"; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+      // a big pause glyph (two bars) — no words
+      const cx = VIEW_W / 2, cy = VIEW_H / 2;
+      ctx.fillStyle = P.text; ctx.fillRect(cx - 10, cy - 14, 6, 28); ctx.fillRect(cx + 4, cy - 14, 6, 28);
     },
 
     _drawCaught(ctx) {
-      const a = M.sat(this.caughtT * 2);
-      ctx.globalAlpha = a;
-      Font.draw(ctx, "KNOCKED OUT", VIEW_W / 2, VIEW_H / 2 - 8, { align: "center", color: P.bad, scale: 3, tracking: 2, shadow: true });
-      Font.draw(ctx, "SHAKE IT OFF, POP — THE KITS NEED YOU...", VIEW_W / 2, VIEW_H / 2 + 16, { align: "center", color: P.text, scale: 1 });
-      ctx.globalAlpha = 1;
+      const a = M.sat(this.caughtT * 2), cx = VIEW_W / 2, cy = VIEW_H / 2;
+      ctx.save(); ctx.globalAlpha = a;
+      // a big shattered mask (no words)
+      ctx.strokeStyle = P.bad; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy, 22, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx - 3, cy - 22); ctx.lineTo(cx + 4, cy - 6); ctx.lineTo(cx - 4, cy + 3); ctx.lineTo(cx + 3, cy + 22); ctx.stroke(); // crack
+      // X eyes
+      ctx.lineWidth = 1.5;
+      for (const s of [-1, 1]) { const ex = cx + s * 8; ctx.beginPath(); ctx.moveTo(ex - 3, cy - 5); ctx.lineTo(ex + 3, cy + 1); ctx.moveTo(ex + 3, cy - 5); ctx.lineTo(ex - 3, cy + 1); ctx.stroke(); }
+      ctx.restore();
     },
 
     _drawWinActors(ctx, cam) {
