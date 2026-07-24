@@ -11,8 +11,8 @@
   /* ----------------------------------------------------------------------- */
   /* Config                                                                  */
   /* ----------------------------------------------------------------------- */
-  RC.VIEW_W = 384;          // internal render buffer width  (5x -> 1920)
-  RC.VIEW_H = 216;          // internal render buffer height (5x -> 1080)
+  RC.VIEW_W = 480;          // internal render buffer width  (4x -> 1920)
+  RC.VIEW_H = 270;          // internal render buffer height (4x -> 1080)
   RC.TILE   = 16;           // tile size in world pixels
   RC.FIXED_DT = 1 / 60;     // physics runs on a fixed 60hz step
 
@@ -122,13 +122,15 @@
     right:   ["ArrowRight", "KeyD"],
     up:      ["ArrowUp", "KeyW"],
     down:    ["ArrowDown", "KeyS"],
-    jump:    ["KeyZ", "Space", "KeyJ"],
-    grab:    ["KeyX", "KeyK", "ShiftLeft", "ShiftRight"],
-    throw:   ["KeyC", "KeyL"],
+    jump:    ["KeyZ", "Space"],
+    attack:  ["KeyX", "KeyK", "KeyF"],
+    grab:    ["ShiftLeft", "ShiftRight", "KeyL"],
+    throw:   ["KeyC", "KeyJ"],
     action:  ["KeyE", "Enter"],
     pause:   ["Escape", "KeyP"],
     restart: ["KeyR"],
     mute:    ["KeyM"],
+    map:     ["Tab", "KeyQ"],
     confirm: ["Enter", "KeyZ", "Space"],
   };
 
@@ -143,7 +145,7 @@
     init() {
       const onKey = (e, isDown) => {
         // Prevent the page from scrolling / scrubbing on the game keys.
-        if (e.code === "Space" || e.code.startsWith("Arrow")) e.preventDefault();
+        if (e.code === "Space" || e.code === "Tab" || e.code.startsWith("Arrow")) e.preventDefault();
         this.raw[e.code] = isDown;
         if (isDown) this._anyRaw = true;
       };

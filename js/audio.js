@@ -137,6 +137,20 @@
           this._noise(t, 0.14, 0.34, this.sfxBus, 1400, "lowpass");
           this._blip(140, t, 0.12, "sawtooth", 0.16, this.sfxBus, 60);
           this._noise(t + 0.02, 0.2, 0.16, this.sfxBus, 700); break;
+        case "slash":
+          this._noise(t, 0.09, 0.18, this.sfxBus, 5200, "bandpass");
+          this._blip(880, t, 0.08, "square", 0.06, this.sfxBus, 1500); break;
+        case "hit":
+          this._noise(t, 0.06, 0.24, this.sfxBus, 2600);
+          this._blip(220, t, 0.08, "square", 0.14, this.sfxBus, 120); break;
+        case "clang":
+          this._blip(1200, t, 0.1, "square", 0.12, this.sfxBus, 700);
+          this._noise(t, 0.06, 0.14, this.sfxBus, 6000, "highpass"); break;
+        case "hurt":
+          this._blip(320, t, 0.22, "sawtooth", 0.2, this.sfxBus, 90);
+          this._noise(t, 0.12, 0.2, this.sfxBus, 1200); break;
+        case "heal":
+          [523, 784, 1047].forEach((f, i) => this._blip(f, t + i * 0.06, 0.3, "sine", 0.12, this.sfxBus)); break;
         case "select":
           this._blip(520, t, 0.06, "square", 0.09, this.sfxBus); break;
         case "confirm":

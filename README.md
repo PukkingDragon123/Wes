@@ -31,7 +31,9 @@ python3 -m http.server 8000
 | Grab & climb walls | hold `X` / `Shift` |
 | Throw / pick up can | `C` |
 | Dive dumpster / hide / drop | `↓` (and `↓`+`Z` to drop through platforms) |
-| Take down a guard | pounce on their head, or bean them with a thrown can |
+| **Attack (claw)** | `X` / `K` — hold `↑` for up-slash, `↓` in the air to **pogo** |
+| Take down an enemy | stomp from above, slash them, or bean them with a thrown can |
+| Open the **city map** / fast-travel | `Tab` / `Q` |
 | Dive a dumpster / hide | `↓` |
 | Cook at the home stove | `C` / `E` (when a dish is ready) |
 | Mini-games | move to aim · `Z` to dig / drop · `X` to leave |
@@ -54,21 +56,37 @@ the left, and CLIMB / THROW / JUMP on the right. Tap the screen to advance menus
    center for a PERFECT plate, then serve your kit.
 4. **Win** when every kit is fed and fast asleep.
 
+## ⚔️ Combat (Hollow-Knight style)
+
+The raccoon is a proper **4-legged animal** that gallops on all fours and **rears
+up on its hind legs to climb and to swipe**. Combat is claw-first: slash forward,
+up, or **pogo** off an enemy's head with a down-slash while airborne. You have a
+row of **health masks**; touching a live enemy costs one (with brief invulnerability
++ knockback), and at zero you're knocked out and shake it off back at a checkpoint.
+Hits land with hitstop, knockback, sparks, and gore.
+
+## 🗺️ The city (map + fast travel)
+
+Explore one connected night-city. Reach a district on foot to **discover** it, then
+open the **city map** (`Tab`) to **fast-travel** between THE DEN, ROOFTOPS, THE
+MARKET, and the SCRAPYARD — a quick way back home to cook.
+
 ## 👮 Enemies
 
-- **Guards** — patrol with raycast vision cones (blocked by walls); walk into a beam
-  and a detection meter fills. Take them out from above or with a thrown can.
+- **Guards** — patrol with raycast vision cones; they chase and hurt on contact.
 - **Guard dog** — smells you by **scent radius** in any direction (hiding masks it),
-  then barks to summon the guards, and it's *fast*.
-- **Searchlight** — a mounted lamp sweeping a bright beam; get caught in it and
-  you're spotted in a blink.
+  barks to summon the guards, and it's *fast*.
+- **Searchlight** — a mounted lamp sweeping a bright beam.
+- **Robots** (the Scrapyard's security, tougher, HP-based):
+  - **Walker** — armored ground bot with a scanning visor that chases and rams.
+  - **Drone** — flying bot that hovers, then dives at you.
 
 ## ✨ Features
 
-- **Physics-driven characters** — every raccoon and guard is built from five
-  spring-animated body parts (head, torso, arms, legs, and a floppy multi-segment
-  tail) with cute, expressive faces: big tracking eyes, blinks, and mouth
-  expressions that shift with the action.
+- **Physics-driven characters** — spring-animated bodies with a floppy multi-segment
+  tail and expressive faces (big tracking eyes, blinks, mouth expressions). The
+  raccoon is a 4-legged animal that rears up to fight; the guards have full detailed
+  bodies (uniform, cap, belt, gloves, boots).
 - **A story it wears on its sleeve** — the title screen is the raccoon dad out in
   the rain, watching a happy human family eat dinner through a warm lit window.
 - **Take guards down** — stomp a guard from above or bean one with a thrown can for

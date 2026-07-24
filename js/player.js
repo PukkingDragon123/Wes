@@ -12,7 +12,8 @@
 
   // --- tuned constants (pixels & seconds) --------------------------------
   const C = {
-    W: 10, H: 15,
+    W: 12, H: 14,
+    MAXHP: 4, IFRAMES: 1.05, ATK_DUR: 0.16, ATK_CD: 0.28,
     GRAV: 900, GRAV_HOLD: 560, MAX_FALL: 330, FAST_FALL: 470,
     RUN: 108, ACCEL_G: 950, ACCEL_A: 680, FRIC_G: 1150, FRIC_A: 300,
     JUMP_VY: -292, JUMP_CUT: 0.42,
@@ -45,6 +46,8 @@
     this.faceLockT = 0;
     this.jumpHeld = false;
     this.expr = "neutral";
+    this.hp = C.MAXHP; this.maxHp = C.MAXHP;
+    this.iframes = 0; this.atk = 0; this.atkT = 0; this.atkDir = "side"; this.atkHit = null;
     this.critter = new RC.Critter("raccoon");
   }
 
@@ -120,6 +123,9 @@
     this.animT += dt;
     this.throwT = Math.min(1, this.throwT + dt * 6);
     if (this.faceLockT > 0) this.faceLockT -= dt;
+    if (this.iframes > 0) this.iframes -= dt;
+    if (this.atk > 0) this.atk -= dt;
+    if (this.atkT > 0) this.atkT -= dt;
 
     // blink timer
     this.blinkT -= dt;
@@ -133,6 +139,9 @@
 
     const ax = input.axisX();
     const ay = input.axisY();
+
+    // attack
+    if (input.pressed("attack") && this.atkT <= 0 && !this.grabbing) this._startAttack(input);
 
     // timers
     this.coyote = this.grounded ? C.COYOTE : Math.max(0, this.coyote - dt);
@@ -240,13 +249,13 @@
   };
 
   Player.prototype._updateCritter = function (dt) {
-    let expr = this.expr;
-    if (this.dead) expr = "scared";
-    else if (this.state === "climb" || this.state === "wall") expr = "determined";
+    const st = this.dead ? "hurt" : (this.atk > 0 ? "attack" : this.state);
+    let expr = this.atk > 0 ? "determined" : (this.iframes > 0.55 ? "scared" : this.expr);
+    if (!this.dead && this.atk <= 0 && (this.state === "climb" || this.state === "wall")) expr = "determined";
     const lookY = this.vy > 80 ? 0.5 : (this.vy < -80 ? -0.4 : 0);
     this.critter.update(dt, {
       vx: this.vx, vy: this.vy, grounded: this.grounded, dir: this.dir,
-      state: this.dead ? "hurt" : this.state, carry: this.carry, throwT: this.throwT,
+      state: st, atkDir: this.atkDir, carry: this.carry, throwT: this.throwT,
       expr: expr, look: { x: this.dir * 0.4, y: lookY }, blink: this.blink,
     });
   };
@@ -269,6 +278,35 @@
     Pt().dust(this.cx() + this.wallDir * 4, this.cy() + 4, 6, away);
     A().play("jump");
     L().shake(1.4, 0.12);
+  };
+
+  Player.prototype._startAttack = function (input) {
+    this.atk = C.ATK_DUR; this.atkT = C.ATK_CD; this.atkHit = {};
+    if (input.is("up")) this.atkDir = "up";
+    else if (input.is("down") && !this.grounded) this.atkDir = "down";
+    else this.atkDir = "side";
+    if (this.atkDir === "side") { const a = input.axisX(); if (a) this.dir = a; this.faceLockT = 0.12; this.vx += this.dir * 46; this.sx = 1.25; this.sy = 0.85; }
+    else { this.sy = 1.25; this.sx = 0.85; }
+    RC.Audio.play("slash");
+    Pt().spark(this.cx() + (this.atkDir === "side" ? this.dir * 12 : 0), this.cy() + (this.atkDir === "down" ? 12 : this.atkDir === "up" ? -12 : 0), 3, "#e6ecff");
+  };
+
+  Player.prototype.getSlashBox = function () {
+    const cx = this.cx(), cy = this.cy();
+    if (this.atkDir === "up") return { x: cx - 11, y: this.y - 20, w: 22, h: 22 };
+    if (this.atkDir === "down") return { x: cx - 11, y: this.y + this.h, w: 22, h: 22 };
+    return { x: this.dir > 0 ? this.x + this.w - 3 : this.x - 24, y: cy - 10, w: 27, h: 20 };
+  };
+
+  Player.prototype.hurt = function (dmg, fromX) {
+    if (this.iframes > 0 || this.dead || this.hidden || this.exiting) return false;
+    this.hp -= dmg; this.iframes = C.IFRAMES;
+    const away = fromX == null ? -this.dir : (this.cx() < fromX ? -1 : 1);
+    this.vx = away * 205; this.vy = -172; this.lock = 0.26; this.grabbing = false;
+    this.sx = 1.35; this.sy = 0.68;
+    RC.Audio.play("hurt"); Pt().spark(this.cx(), this.cy(), 9, "#ff5d6c"); Pt().blood(this.cx(), this.cy(), away, 6);
+    RC.Level.shake(3.8, 0.32);
+    return true;
   };
 
   Player.prototype._easeScale = function (dt) {
@@ -318,7 +356,20 @@
     const x = this.cx() - cam.x;
     const y = this.feetY() - cam.y;
     if (!this.dead) RC.Sprites.shadow(ctx, x, this.feetY() - cam.y + 1, this.w + 6, this.grounded ? 0.3 : 0.16);
-    this.critter.draw(ctx, x, y, { sx: this.sx, sy: this.sy });
+    // i-frame flicker
+    if (!(this.iframes > 0 && Math.floor(this.iframes * 22) % 2 === 0)) {
+      this.critter.draw(ctx, x, y, { sx: this.sx, sy: this.sy });
+    }
+    // slash arc VFX
+    if (this.atk > 0) {
+      const a = Math.max(0, this.atk / C.ATK_DUR);
+      ctx.save(); ctx.globalAlpha = a * 0.85; ctx.strokeStyle = "#e6ecff"; ctx.lineWidth = 2;
+      ctx.beginPath();
+      if (this.atkDir === "up") ctx.arc(x, this.y - cam.y, 16, Math.PI * 1.18, Math.PI * 1.82);
+      else if (this.atkDir === "down") ctx.arc(x, this.feetY() - cam.y, 16, Math.PI * 0.18, Math.PI * 0.82);
+      else ctx.arc(x, this.cy() - cam.y, 18, this.dir > 0 ? -0.95 : Math.PI - 0.95, this.dir > 0 ? 0.95 : Math.PI + 0.95);
+      ctx.stroke(); ctx.globalAlpha = 1; ctx.restore();
+    }
   };
 
   RC.Player = Player;

@@ -60,6 +60,12 @@
     const vx = m.vx || 0, vy = m.vy || 0, grounded = m.grounded !== false && m.grounded !== 0;
     const state = m.state || "idle";
     const moving = grounded && Math.abs(vx) > 12;
+    // rear-up factor: 0 = on all fours, 1 = up on hind legs (attack/climb/carry)
+    if (!this.rear) this.rear = sc();
+    this.atkDir = m.atkDir || "side";
+    let rearT = (state === "attack" || state === "climb" || state === "wall" || state === "carry" || state === "throw") ? 1
+      : (state === "jump" || state === "fall") ? 0.55 : 0;
+    stepS(this.rear, rearT, state === "attack" ? 300 : 95, 17, dt);
 
     // blink clock (unless owner forces it)
     if (m.blink != null) this.blink = m.blink ? 1 : 0;
@@ -85,9 +91,10 @@
     if (!grounded) bobT = 0;
     stepS(this.bob, bobT, 170, 12, dt);
 
-    // head lag
-    const hTx = this.lean.x * 0.6 - vx * 0.006 * this.dir + (m.headTilt || 0);
-    const hTy = -19 + (m.crouchY || (state === "crouch" ? 3 : 0)) + M.clamp(vy * 0.004, -2, 3) + this.bob.x * 0.4;
+    // head lag — forward-low on all fours, up when reared
+    const rr = this.rear.x;
+    const hTx = M.lerp(6.6, 3.6 + this.lean.x * 0.5, rr) - vx * 0.006 * this.dir + (m.headTilt || 0);
+    const hTy = M.lerp(-8.5, -16, rr) + (state === "crouch" ? 3 : 0) + M.clamp(vy * 0.004, -2, 3) + this.bob.x * 0.4;
     if (!this._init) { this.head.x = hTx; this.head.y = hTy; }
     stepP(this.head, hTx, hTy, 220, 22, dt);
 
@@ -157,42 +164,68 @@
     };
   };
 
+  // A real 4-legged raccoon that rears up on its hind legs to climb / attack.
   Critter.prototype._raccoon = function (ctx) {
     const P = this.pal, g = this._mk(ctx);
-    const bob = this.bob.x, lean = this.lean.x;
+    const bob = this.bob.x, r = this.rear ? this.rear.x : 0;
+    const moving = this.grounded && Math.abs(this.vx) > 12;
+    const lp = this.legPhase;
+    const gg = moving ? (1 - r) : 0;
+    const sBack = Math.sin(lp * 2) * 3 * gg, sFore = Math.sin(lp * 2 + 2.2) * 3 * gg;
+    const lift = moving ? Math.max(0, Math.sin(lp * 2 + 1)) * 2 * gg : 0;
 
-    // ---------- TAIL (part 5) drawn behind everything ----------
-    for (let i = this.tail.length - 1; i >= 0; i--) {
-      const s = this.tail[i], r = 3.5 - i * 0.32;
-      g.B(s.x, s.y, r + 0.5, P.out);
-    }
-    for (let i = this.tail.length - 1; i >= 0; i--) {
-      const s = this.tail[i], r = 3.0 - i * 0.3;
-      g.B(s.x, s.y, r, (i % 2 === 0) ? P.tail1 : P.tail2);
-    }
-    const tip = this.tail[this.tail.length - 1];
-    g.B(tip.x, tip.y, 1.7, P.tail2);   // dark fluffy tip
+    // rear-up: rotate the whole body about the hind feet
+    const pivot = this.dir > 0 ? -5 : 5;
+    ctx.save();
+    ctx.translate(pivot, 0); ctx.rotate(-this.dir * 1.12 * r); ctx.translate(-pivot, 0);
 
-    // ---------- BACK LEG + BACK ARM ----------
-    const lp = this.legPhase, moving = this.grounded && Math.abs(this.vx) > 12;
-    const sw = moving ? Math.sin(lp) : 0, sw2 = moving ? Math.sin(lp + Math.PI) : 0;
-    this._leg(g, P, -2.4 + sw2 * 3, moving ? Math.max(0, -sw2) * 2 : 0, true);
-    this._arm(g, P, this.head.y, -this.arm.x, true, null);
+    // ---- TAIL (part 5), behind ----
+    for (let i = this.tail.length - 1; i >= 0; i--) g.B(this.tail[i].x, this.tail[i].y, (3.5 - i * 0.32) + 0.5, P.out);
+    for (let i = this.tail.length - 1; i >= 0; i--) g.B(this.tail[i].x, this.tail[i].y, 3.0 - i * 0.3, (i % 2 === 0) ? P.tail1 : P.tail2);
+    const tip = this.tail[this.tail.length - 1]; g.B(tip.x, tip.y, 1.7, P.tail2);
 
-    // ---------- TORSO (part 2) ----------
-    const bx = lean * 0.5;
-    // outline then fur capsule then belly
-    this._capsule(g, bx, -13 + bob, bx * 0.4, -5, 5.4, P.out);
-    this._capsule(g, bx, -13 + bob, bx * 0.4, -5, 4.6, P.fur);
-    this._capsule(g, bx + 1.2, -12 + bob, bx * 0.4 + 0.6, -5.5, 3.0, P.lite); // front light
-    this._capsule(g, bx + 0.4, -11 + bob, bx * 0.4, -5.5, 2.4, P.belly);      // belly
+    // ---- hind legs (the pivot) ----
+    this._legQuad(g, P, -6, sBack, 0, true, null);
+    this._legQuad(g, P, -3.4, sBack * 0.6, lift * 0.5, true, null);
 
-    // ---------- FRONT LEG + FRONT ARM ----------
-    this._leg(g, P, 2.2 + sw * 3, moving ? Math.max(0, -sw) * 2 : 0, false);
-    this._arm(g, P, this.head.y, this.arm.x, false, this.carry);
+    // ---- fore legs: planted on all fours, or raised paws when reared ----
+    const fFootY = M.lerp(0, -8, r), fFootX = M.lerp(5.5, 3.2, r);
+    this._legQuad(g, P, fFootX, sFore, fFootY < -1 ? 0 : lift, false, fFootY);
+    this._legQuad(g, P, fFootX - 2.2, sFore * 0.6, fFootY < -1 ? 0 : lift * 0.5, false, fFootY);
 
-    // ---------- HEAD (part 1) + FACE ----------
+    // ---- torso (part 2): a horizontal back that stands up via the rotation ----
+    const bX = -5.5, bY = -6 + bob * 0.5, fX = 5.5, fY = -7 + bob * 0.5;
+    this._capsule(g, bX, bY, fX, fY, 4.7, P.out);
+    this._capsule(g, bX, bY, fX, fY, 4.1, P.fur);
+    this._capsule(g, bX, bY - 1.6, fX, fY - 1.6, 2.4, P.lite);        // back highlight
+    this._capsule(g, bX + 0.5, bY + 1.6, fX - 0.5, fY + 1.6, 2.4, P.belly); // underside
+
+    // ---- carried item (in a raised fore paw) ----
+    if (this.carry) { g.R(fFootX + 1, fFootY - 4, 4, 6, "#526673"); g.R(fFootX + 1, fFootY - 4, 4, 1, "#cfd6ff"); }
+
+    // ---- head (part 1) + face ----
     this._head(g, P);
+
+    // ---- claw swipe when attacking ----
+    if (this.state === "attack") {
+      const hx = this.head.x, hy = this.head.y;
+      let px = hx + 4, py = hy + 3;
+      if (this.atkDir === "up") { px = hx; py = hy - 7; }
+      else if (this.atkDir === "down") { px = hx; py = hy + 9; }
+      g.B(px, py, 2, P.fur); g.B(px, py, 1.3, P.lite);
+      for (let c = -1; c <= 1; c++) g.R(px + 1 + c, py - 1, 1, 2, "#eef1ff");
+    }
+
+    ctx.restore();
+  };
+
+  Critter.prototype._legQuad = function (g, P, footX, swing, lift, back, footY) {
+    const c = back ? P.dark : P.fur;
+    const fx = footX + swing;
+    const fy = (footY == null ? 0 : footY) - lift;
+    const hipY = -4.5, y0 = Math.min(hipY, fy), h = Math.abs(fy - hipY) + 1.2;
+    g.R(fx - 1.1, y0, 2.2, h, c);
+    g.R(fx - 1.6, fy - 1, 3.2, 2, "#1b1e2e");   // paw
   };
 
   Critter.prototype._capsule = function (g, x0, y0, x1, y1, r, c) {

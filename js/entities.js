@@ -28,6 +28,7 @@
     this.range = def.range || 100;
     this.fov = def.fov || 0.5;
     this.critter = new RC.Critter("guard");
+    this.maxHp = def.hp || 2; this.dmg = def.dmg || 1;
     this.reset();
   }
   Guard.prototype.reset = function () {
@@ -35,6 +36,18 @@
     this.state = "patrol"; this.turnT = 0; this.searchT = 0; this.lookT = 0;
     this.animT = 0; this.moving = false; this.lastX = this.homeX; this.lastY = this.y;
     this.dead = false; this.deadT = 0; this.knockDir = 1;
+    this.hp = this.maxHp; this.hitStun = 0; this.kx = 0;
+  };
+  Guard.prototype.aabb = function () { return { x: this.x - 5, y: this.y - 22, w: 10, h: 22 }; };
+  Guard.prototype.hostile = function () { return this.alert >= SUSP; };
+  Guard.prototype.hit = function (dmg, fromX) {
+    if (this.dead) return;
+    this.hp -= dmg; this.hitStun = 0.22;
+    this.alert = Math.max(this.alert, 0.95); this.lastX = fromX;
+    this.kx = (this.x < fromX ? -1 : 1) * 95;
+    Pt().spark(this.x, this.y - 12, 7, "#ffd27a"); Pt().blood(this.x, this.y - 12, this.x < fromX ? -1 : 1, 6);
+    A().play("hit");
+    if (this.hp <= 0) this.die(this.x < fromX ? -1 : 1);
   };
   Guard.prototype.eyeX = function () { return this.x + this.dir * 5; };
   Guard.prototype.eyeY = function () { return this.y - 13; };
@@ -106,6 +119,11 @@
       this.critter.update(dt, { grounded: true, vx: 0, state: "idle", dir: this.dir });
       return;
     }
+    if (this.hitStun > 0) {
+      this.hitStun -= dt; this.x += this.kx * dt; this.kx *= 0.86;
+      this.critter.update(dt, { grounded: true, vx: 0, state: "idle", dir: this.dir, expr: "scared" });
+      return;
+    }
     const prevAlert = this.alert;
 
     const s = this.canSee(pl);
@@ -113,7 +131,6 @@
       this.alert = M.sat(this.alert + 1.7 * s * dt);
       this.lastX = pl.cx(); this.lastY = pl.feetY(); this.grace = 0.7; this.seeing = true;
       this.dir = pl.cx() < this.x ? -1 : 1;
-      if (this.alert >= 1) { game.onSpotted(this); return; }
     } else {
       this.seeing = false;
       if (this.grace > 0) this.grace -= dt; else this.alert = Math.max(0, this.alert - 0.85 * dt);
@@ -208,12 +225,24 @@
     this.homeX = def.x; this.x = def.x; this.y = def.y;
     this.min = def.min; this.max = def.max; this.dir = def.dir || 1;
     this.scent = def.scent || 46; this.range = def.range || 66; this.fov = def.fov || 0.6;
+    this.maxHp = def.hp || 2; this.dmg = def.dmg || 1;
     this.reset();
   }
   Dog.prototype.reset = function () {
     this.x = this.homeX; this.alert = 0; this.grace = 0; this.state = "patrol"; this.turnT = 0;
     this.animT = 0; this.moving = false; this.dead = false; this.deadT = 0; this.knockDir = 1;
     this.lastX = this.homeX; this.barkCd = 0;
+    this.hp = this.maxHp; this.hitStun = 0; this.kx = 0;
+  };
+  Dog.prototype.aabb = function () { return { x: this.x - 6, y: this.y - 13, w: 12, h: 13 }; };
+  Dog.prototype.hostile = function () { return this.alert >= SUSP; };
+  Dog.prototype.hit = function (dmg, fromX) {
+    if (this.dead) return;
+    this.hp -= dmg; this.hitStun = 0.2; this.alert = Math.max(this.alert, 0.95); this.lastX = fromX;
+    this.kx = (this.x < fromX ? -1 : 1) * 120;
+    Pt().spark(this.x, this.y - 6, 6, "#ffd27a"); Pt().blood(this.x, this.y - 6, this.x < fromX ? -1 : 1, 6);
+    A().play("hit");
+    if (this.hp <= 0) this.die(this.x < fromX ? -1 : 1);
   };
   Dog.prototype.eyeX = function () { return this.x + this.dir * 6; };
   Dog.prototype.eyeY = function () { return this.y - 6; };
@@ -239,11 +268,11 @@
   Dog.prototype.update = function (dt, pl, game) {
     this.animT += dt; if (this.barkCd > 0) this.barkCd -= dt;
     if (this.dead) { this.deadT += dt; return; }
+    if (this.hitStun > 0) { this.hitStun -= dt; this.x += this.kx * dt; this.kx *= 0.86; return; }
     const s = this.canSee(pl);
     if (s > 0) {
       this.alert = M.sat(this.alert + 2.1 * s * dt); this.lastX = pl.cx(); this.grace = 0.7;
       this.dir = pl.cx() < this.x ? -1 : 1;
-      if (this.alert >= 1) { game.onSpotted(this); return; }
       if (this.alert > SUSP && this.barkCd <= 0) { A().play("suspect"); if (game.alertNear) game.alertNear(this.x, this.y); this.barkCd = 1.4; }
     } else { if (this.grace > 0) this.grace -= dt; else this.alert = Math.max(0, this.alert - 0.7 * dt); }
     this.moving = false;
@@ -323,10 +352,11 @@
     const s = this.canSee(pl);
     if (s > 0) {
       this.alert = M.sat(this.alert + 1.9 * s * dt); this.grace = 0.4;
-      if (this.alert >= 1) { game.onSpotted(this); return; }
       if (this.alert > SUSP && game.alertNear) game.alertNear(pl.cx(), pl.feetY());
     } else { if (this.grace > 0) this.grace -= dt; else this.alert = Math.max(0, this.alert - 1.0 * dt); }
   };
+  Searchlight.prototype.hostile = function () { return false; };
+  Searchlight.prototype.hit = function () { A().play("clang"); };
   Searchlight.prototype.drawCone = function (ctx, cam) {
     const x = this.x - cam.x, y = this.y - cam.y, a = this.ang();
     const col = this.alert >= SPOT_BUBBLE ? "255,90,108" : this.alert >= SUSP ? "255,176,90" : "255,244,200";
@@ -350,6 +380,139 @@
   Searchlight.prototype._bubble = Guard.prototype._bubble;
 
   /* ======================================================================
+     ROBOTS — the Scrapyard's security. Harder, HP-based, spark on hit.
+       rkind 'walker' : armored ground bot, chases & rams (5 HP)
+       rkind 'drone'  : flying bot, dives at you (2 HP)
+  ====================================================================== */
+  function Robot(def) {
+    this.kind = def.rkind || "walker";
+    this.homeX = def.x; this.x = def.x; this.homeY = def.y; this.y = def.y;
+    this.min = def.min != null ? def.min : def.x - 44;
+    this.max = def.max != null ? def.max : def.x + 44;
+    this.dir = def.dir || 1;
+    this.range = def.range || (this.kind === "drone" ? 130 : 115);
+    this.fov = def.fov || 0.62;
+    this.maxHp = def.hp || (this.kind === "drone" ? 2 : 5);
+    this.dmg = def.dmg || 1;
+    this.reset();
+  }
+  Robot.prototype._los = Guard.prototype._los;
+  Robot.prototype._walk = Guard.prototype._walk;
+  Robot.prototype.hearNoise = Guard.prototype.hearNoise;
+  Robot.prototype.reset = function () {
+    this.x = this.homeX; this.y = this.homeY; this.alert = 0; this.grace = 0;
+    this.state = "patrol"; this.turnT = 0; this.animT = 0; this.moving = false;
+    this.dead = false; this.deadT = 0; this.knockDir = 1; this.lastX = this.homeX; this.lastY = this.y;
+    this.hp = this.maxHp; this.hitStun = 0; this.kx = 0; this.hoverBase = this.homeY;
+  };
+  Robot.prototype.aabb = function () {
+    return this.kind === "drone" ? { x: this.x - 7, y: this.y - 6, w: 14, h: 12 } : { x: this.x - 8, y: this.y - 20, w: 16, h: 20 };
+  };
+  Robot.prototype.hostile = function () { return true; };
+  Robot.prototype.eyeX = function () { return this.x + this.dir * 6; };
+  Robot.prototype.eyeY = function () { return this.kind === "drone" ? this.y : this.y - 13; };
+  Robot.prototype.canSee = function (pl) {
+    if (this.dead || pl.hidden || pl.dead) return 0;
+    const dx = pl.cx() - this.eyeX(), dy = pl.cy() - this.eyeY(), dist = Math.hypot(dx, dy);
+    if (dist > this.range) return 0;
+    if (this.kind === "walker") { const d = Math.abs(angDiff(Math.atan2(dy, dx), Math.atan2(0.12, this.dir))); if (d > this.fov) return 0; }
+    if (!this._los(this.eyeX(), this.eyeY(), pl.cx(), pl.cy())) return 0;
+    return this.kind === "drone" ? 0.9 : 0.85 * (1 - dist / this.range * 0.5);
+  };
+  Robot.prototype.hit = function (dmg, fromX) {
+    if (this.dead) return;
+    this.hp -= dmg; this.hitStun = 0.16; this.alert = 1; this.lastX = fromX;
+    this.kx = (this.x < fromX ? -1 : 1) * 60;
+    A().play("clang"); Pt().spark(this.x, this.y - (this.kind === "drone" ? 0 : 10), 8, "#ffd27a");
+    if (this.hp <= 0) this.die(this.x < fromX ? -1 : 1);
+  };
+  Robot.prototype.die = function (fromDir) {
+    if (this.dead) return;
+    this.dead = true; this.deadT = 0; this.knockDir = fromDir || 1;
+    A().play("splat"); A().play("clang"); L().shake(4, 0.34);
+    const yy = this.y - (this.kind === "drone" ? 0 : 10);
+    Pt().spark(this.x, yy, 22, "#ffd27a"); Pt().spark(this.x, yy, 16, "#8fd6ff"); Pt().ring(this.x, yy, "#ffd27a", 40);
+    for (let i = 0; i < 12; i++) Pt().emit({ kind: "dust", x: this.x, y: yy, vx: (RC.rng() - 0.5) * 150, vy: -RC.rng() * 150, g: 320, drag: 0.9, life: 0.7, size: 2, color: RC.rng() < 0.5 ? "#6a7a86" : "#4a5560" });
+  };
+  Robot.prototype.update = function (dt, pl, game) {
+    this.animT += dt;
+    if (this.dead) { this.deadT += dt; if (this.kind === "drone") this.y += 60 * dt; return; }
+    if (this.hitStun > 0) { this.hitStun -= dt; this.x += this.kx * dt; this.kx *= 0.86; return; }
+    const s = this.canSee(pl);
+    if (s > 0) { this.alert = M.sat(this.alert + 2.2 * s * dt); this.lastX = pl.cx(); this.lastY = pl.cy(); this.grace = 0.9; }
+    else { if (this.grace > 0) this.grace -= dt; else this.alert = Math.max(0, this.alert - 0.6 * dt); }
+    if (this.kind === "drone") {
+      if (this.alert >= SUSP) {
+        this.state = "dive";
+        this.x += M.clamp(pl.cx() - this.x, -1, 1) * 95 * dt;
+        this.y += M.clamp(pl.cy() - this.y, -1, 1) * 95 * dt;
+        this.dir = pl.cx() < this.x ? -1 : 1;
+      } else {
+        this.state = "patrol";
+        this.x += this.dir * 42 * dt;
+        if (this.x < this.min) { this.x = this.min; this.dir = 1; } if (this.x > this.max) { this.x = this.max; this.dir = -1; }
+        this.y += (this.hoverBase + Math.sin(this.animT * 2) * 6 - this.y) * Math.min(1, dt * 4);
+      }
+    } else {
+      this.moving = false;
+      if (this.alert >= SUSP) { this.state = "alert"; this.dir = this.lastX < this.x ? -1 : 1; this.moving = this._walk(this.dir, 72, dt, false); }
+      else { this.state = "patrol"; if (this.turnT > 0) this.turnT -= dt; else this.moving = this._walk(this.dir, 34, dt, true); }
+    }
+  };
+  Robot.prototype.drawCone = function (ctx, cam) {
+    if (this.dead || this.kind !== "walker") return;
+    const ex = this.eyeX() - cam.x, ey = this.eyeY() - cam.y, fa = Math.atan2(0.12, this.dir), R = this.range * 0.8;
+    const col = this.alert >= SUSP ? "255,90,108" : "150,220,255";
+    ctx.beginPath(); ctx.moveTo(ex, ey);
+    for (let i = 0; i <= 12; i++) {
+      const a = fa - this.fov + (2 * this.fov) * (i / 12), dx = Math.cos(a), dy = Math.sin(a);
+      let dd = R; for (let d = 6; d <= R; d += 5) { if (L().rectSolid(this.eyeX() + dx * d, this.eyeY() + dy * d, 1, 1)) { dd = d - 5; break; } }
+      ctx.lineTo(ex + dx * dd, ey + dy * dd);
+    }
+    ctx.closePath();
+    const g = ctx.createRadialGradient(ex, ey, 2, ex, ey, R);
+    g.addColorStop(0, "rgba(" + col + ",0.16)"); g.addColorStop(1, "rgba(" + col + ",0)");
+    ctx.fillStyle = g; ctx.fill();
+  };
+  Robot.prototype.draw = function (ctx, cam) {
+    const x = Math.round(this.x - cam.x), y = Math.round(this.y - cam.y);
+    if (this.kind === "drone") return this._drawDrone(ctx, x, y);
+    // ---- WALKER ----
+    if (this.dead) { S().shadow(ctx, x, y + 1, 18, 0.3); const p0 = new (S().Painter)(ctx, x, y, this.dir); p0.r(-8, -6, 16, 6, "#3a434e"); p0.r(-6, -3, 12, 3, "#2a3038"); return; }
+    S().shadow(ctx, x, y + 1, 18, 0.32);
+    const p = new (S().Painter)(ctx, x, y, this.dir);
+    const st = this.moving ? Math.round(Math.sin(this.animT * 9) * 1.5) : 0;
+    p.r(-6 + st, -7, 4, 7, "#3a434e"); p.r(2 - st, -7, 4, 7, "#3a434e");   // legs
+    p.r(-7 + st, -1, 5, 2, "#1b1e2e"); p.r(2 - st, -1, 5, 2, "#1b1e2e");   // feet
+    p.r(-7, -19, 14, 13, "#4a5560"); p.r(-7, -19, 14, 2, "#6f7f8c");        // torso
+    p.r(-7, -8, 14, 2, "#2a3038"); p.r(5, -19, 2, 13, "#5a6a76"); p.r(-7, -19, 2, 13, "#39424c");
+    for (let i = -5; i <= 5; i += 5) p.r(i, -17, 1, 1, "#6f7f8c");          // rivets
+    // visor + scanning red eye
+    p.r(-5, -16, 10, 3, "#0e1116");
+    const scan = this.alert >= SUSP ? Math.sin(this.animT * 10) * 3 : Math.sin(this.animT * 1.6) * 2.5;
+    p.r(Math.round(scan) - 1, -15, 2, 1, "#ff5d6c");
+    // arm/claw forward
+    p.r(5, -15, 4, 2, "#39424c"); p.r(9, -16, 2, 2, "#6f7f8c"); p.r(9, -13, 2, 2, "#6f7f8c");
+    // antenna
+    p.r(0, -21, 1, 3, "#6f7f8c"); p.r(-1, -22, 3, 1, this.alert >= SUSP ? "#ff5d6c" : "#8fd6ff");
+    if (this.alert >= SPOT_BUBBLE) Guard.prototype._bubble.call(this, ctx, x, y - 30, "!", P.bad);
+  };
+  Robot.prototype._drawDrone = function (ctx, x, y) {
+    if (this.dead) { const p1 = new (S().Painter)(ctx, x, y, this.dir); p1.r(-5, -3, 10, 6, "#3a434e"); return; }
+    // rotor blur
+    const bl = Math.sin(this.animT * 40) * 6;
+    ctx.strokeStyle = "rgba(150,170,200,0.5)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x - 8, y - 6); ctx.lineTo(x - 8 + bl, y - 6); ctx.moveTo(x + 8, y - 6); ctx.lineTo(x + 8 - bl, y - 6); ctx.stroke();
+    const p = new (S().Painter)(ctx, x, y, this.dir);
+    p.r(-8, -6, 3, 1, "#5a6a76"); p.r(5, -6, 3, 1, "#5a6a76");   // arms to rotors
+    p.r(-5, -4, 10, 7, "#4a5560"); p.r(-5, -4, 10, 2, "#6f7f8c"); p.r(-5, 2, 10, 1, "#2a3038");
+    p.r(-1, -1, 3, 3, "#0e1116"); p.r(0, 0, 2, 2, this.alert >= SUSP ? "#ff5d6c" : "#8fd6ff"); // eye
+    // under thruster glow
+    ctx.fillStyle = "rgba(140,214,255,0.4)"; ctx.fillRect(x - 2, y + 3, 4, 2);
+    if (this.alert >= SPOT_BUBBLE) Guard.prototype._bubble.call(this, ctx, x, y - 16, "!", P.bad);
+  };
+
+  /* ======================================================================
      THROWABLE (in-flight distraction object)
   ====================================================================== */
   function Throwable(o) {
@@ -359,8 +522,8 @@
   Throwable.prototype.update = function (dt, game) {
     // a direct hit on a guard takes them down (gore)
     for (const g of game.guards) {
-      if (!g.dead && Math.abs(g.x - this.x) < 9 && Math.abs((g.y - 13) - this.y) < 13) {
-        g.die(this.vx >= 0 ? 1 : -1);
+      if (!g.dead && g.aabb && Math.abs(g.x - this.x) < 10 && Math.abs((g.y - 13) - this.y) < 14) {
+        if (g.hit) g.hit(2, this.x); else g.die(this.vx >= 0 ? 1 : -1);
         this.dead = true; Pt().ring(this.x, this.y, P.bad, 46);
         return;
       }
@@ -556,6 +719,7 @@
   Ent.Guard = Guard;
   Ent.Dog = Dog;
   Ent.Searchlight = Searchlight;
+  Ent.Robot = Robot;
   Ent.Throwable = Throwable;
   Ent.Loot = Loot;
   Ent.HideSpot = HideSpot;

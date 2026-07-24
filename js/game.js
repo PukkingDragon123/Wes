@@ -94,11 +94,21 @@
       for (const gd of L.guardsDef) {
         this.guards.push(gd.type === "dog" ? new RC.Ent.Dog(gd)
           : gd.type === "searchlight" ? new RC.Ent.Searchlight(gd)
-            : new RC.Ent.Guard(gd));
+            : gd.type === "robot" ? new RC.Ent.Robot(gd)
+              : new RC.Ent.Guard(gd));
       }
       // assign each kit a dish to crave
       const wants = ["burger", "sushi", "omelette", "grilled", "stew"];
       this.kids.forEach((k, i) => { k.recipe = RC.Food.recipe(wants[i % wants.length]); k.fed = false; k.celebrate = 0; });
+      // city-map districts (fast-travel nodes across the one connected level)
+      const T = RC.TILE;
+      this.districts = [
+        { name: "THE DEN", x: 6 * T + 8, y: 24 * T, unlocked: true },
+        { name: "ROOFTOPS", x: 41 * T + 8, y: 14 * T, unlocked: false },
+        { name: "THE MARKET", x: 75 * T + 8, y: 24 * T, unlocked: false },
+        { name: "SCRAPYARD", x: 124 * T + 8, y: 8 * T, unlocked: false },
+      ];
+      this.mapSel = 0;
     },
 
     // ---- callbacks used by entities -----------------------------------
@@ -115,16 +125,7 @@
     makeNoise(x, y, r) { for (const g of this.guards) g.hearNoise(x, y, r); Pt.ring(x, y, "#ffd27a", r); },
     spawnLoot(x, y, type) { this.loot.push(new RC.Ent.Loot({ type, x, y })); },
     spawnThrowable(it) { this.throwables.push(new RC.Ent.Throwable(it)); },
-    onSpotted(guard) {
-      if (this.state !== "play") return;
-      this.state = "caught"; this.caughtT = 0;
-      this.player.dead = true;
-      this.flash = 1; this.flashColor = "255,70,90";
-      this.hitstop = 0.14;
-      L.shake(5, 0.5);
-      Audio.play("spotted"); Audio.play("caught");
-      Audio.setIntensity(1);
-    },
+    onSpotted() { /* combat: enemies now chase and deal contact damage instead of instant-fail */ },
 
     _toast(t) { this.msg = t; this.msgT = 3; },
 
@@ -164,6 +165,7 @@
         case "caught": this._updCaught(dt); break;
         case "dive": this._updDive(dt); break;
         case "cook": this._updCook(dt); break;
+        case "map": this._updMap(dt); break;
         case "won": this._updWon(dt); break;
         case "win": this._updWin(dt); break;
       }
@@ -224,6 +226,39 @@
       const pl = this.player;
       pl.update(dt, Input);
 
+      // --- melee: player's slash hits enemies ---
+      if (pl.atk > 0) {
+        const box = pl.getSlashBox();
+        for (let i = 0; i < this.guards.length; i++) {
+          const g = this.guards[i];
+          if (g.dead || pl.atkHit[i] || !g.aabb) continue;
+          const a = g.aabb();
+          if (M.aabb(box.x, box.y, box.w, box.h, a.x, a.y, a.w, a.h)) {
+            pl.atkHit[i] = true;
+            if (g.hit) g.hit(1, pl.cx());
+            this.hitstop = Math.max(this.hitstop, 0.05);
+            Pt.spark(box.x + box.w / 2, box.y + box.h / 2, 6, "#e6ecff");
+            if (pl.atkDir === "down") { pl.vy = -300; pl.atk = 0; }   // pogo bounce
+            else pl.vx += (pl.cx() < g.x ? -1 : 1) * 64;              // recoil
+          }
+        }
+      }
+      // --- contact damage: touching a live enemy hurts ---
+      if (!pl.dead && !pl.hidden && pl.iframes <= 0) {
+        for (const g of this.guards) {
+          if (g.dead || g.hitStun > 0 || !g.aabb) continue;
+          const a = g.aabb();
+          if (M.aabb(pl.x, pl.y, pl.w, pl.h, a.x, a.y, a.w, a.h)) { if (pl.hurt(g.dmg || 1, g.x)) break; }
+        }
+      }
+      // --- knocked out? ---
+      if (pl.hp <= 0 && !pl.dead) {
+        pl.dead = true; this.state = "caught"; this.caughtT = 0;
+        this.flash = 1; this.flashColor = "255,70,90"; this.hitstop = 0.16;
+        L.shake(5, 0.5); Audio.play("caught"); Audio.setIntensity(0);
+        return;
+      }
+
       // interactions --------------------------------------------------
       if (pl.hidden) {
         if (Input.pressed("jump") || Input.pressed("up") || Input.axisX() !== 0) {
@@ -255,11 +290,11 @@
       if (!pl.hidden && !pl.dead && pl.vy > 40) {
         for (const g of this.guards) {
           if (g.dead) continue;
-          if (Math.abs(pl.cx() - g.x) < 10 && pl.feetY() > g.y - 22 && pl.feetY() < g.y - 4) {
-            g.die(pl.cx() < g.x ? -1 : 1);
-            pl.vy = -240; pl.sx = 1.3; pl.sy = 0.7;
-            this.hitstop = 0.08; this.flash = 0.5; this.flashColor = "200,40,55";
-            this._toast("TAKEDOWN!");
+          if (Math.abs(pl.cx() - g.x) < 11 && pl.feetY() > g.y - 22 && pl.feetY() < g.y - 4) {
+            if (g.hit) g.hit(3, pl.cx()); else g.die(pl.cx() < g.x ? -1 : 1);
+            pl.vy = -260; pl.sx = 1.3; pl.sy = 0.7;
+            this.hitstop = 0.08; this.flash = 0.4; this.flashColor = "200,40,55";
+            this._toast("STOMP!");
             break;
           }
         }
@@ -283,6 +318,14 @@
       // fell into the void? (shouldn't happen — floor is solid) safety
       if (pl.y > L.worldH + 40) this._respawn();
 
+      // discover districts on foot; open the city map with Tab/Q
+      for (const d of this.districts) {
+        if (!d.unlocked && Math.abs(pl.cx() - d.x) < 64 && Math.abs(pl.feetY() - d.y) < 44) {
+          d.unlocked = true; this._toast("DISTRICT FOUND: " + d.name); Audio.play("checkpoint"); Pt.spark(pl.cx(), pl.cy() - 12, 10, P.good);
+        }
+      }
+      if (Input.pressed("map")) { this.state = "map"; Audio.play("select"); return; }
+
       // checkpoints
       for (const cp of this.checkpoints) {
         if (!cp.taken && pl.grounded && !pl.hidden && pl.cx() > cp.x - 4 && Math.abs(pl.feetY() - cp.y) < 22) {
@@ -303,6 +346,7 @@
       const pl = this.player;
       pl.x = this.checkpoint.x - pl.w / 2; pl.y = this.checkpoint.y - pl.h;
       pl.vx = pl.vy = 0; pl.dead = false; pl.hidden = false; pl.carry = null; pl.stam = RC.PlayerConfig.STAM_MAX;
+      pl.hp = pl.maxHp; pl.iframes = 1.3; pl.atk = 0;
       for (const g of this.guards) g.reset();
       for (const s of this.spots) s.active = false;
       this.throwables.length = 0;
@@ -322,6 +366,42 @@
         this.state = "play";
         this.fadeDir = -1;
       }
+    },
+
+    _updMap(dt) {
+      if (Input.pressed("map") || Input.pressed("pause")) { this.state = "play"; return; }
+      if (Input.pressed("left")) { this.mapSel = (this.mapSel + this.districts.length - 1) % this.districts.length; Audio.play("select"); }
+      if (Input.pressed("right")) { this.mapSel = (this.mapSel + 1) % this.districts.length; Audio.play("select"); }
+      if (Input.pressed("confirm") || Input.pressed("action")) {
+        const d = this.districts[this.mapSel];
+        if (d.unlocked) {
+          const pl = this.player; pl.x = d.x - pl.w / 2; pl.y = d.y - pl.h; pl.vx = pl.vy = 0; pl.hidden = false;
+          for (const g of this.guards) g.reset(); this.throwables.length = 0;
+          L.focusCamera(pl.cx(), pl.cy()); Audio.play("confirm"); this._toast("TRAVELED TO " + d.name); this.state = "play";
+        } else Audio.play("bad");
+      }
+    },
+    _drawMap(ctx) {
+      ctx.fillStyle = "rgba(6,6,16,0.92)"; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+      // faint skyline flavor
+      Font.draw(ctx, "NIGHT CITY", VIEW_W / 2, 26, { align: "center", color: P.gold, scale: 2, tracking: 3, shadow: true });
+      Font.draw(ctx, "FAST TRAVEL", VIEW_W / 2, 48, { align: "center", color: P.textDim, scale: 1, tracking: 1 });
+      const n = this.districts.length, y = VIEW_H / 2, x0 = 64, x1 = VIEW_W - 64;
+      // route line
+      ctx.strokeStyle = "#3a3466"; ctx.lineWidth = 2; ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); ctx.setLineDash([]);
+      for (let i = 0; i < n; i++) {
+        const d = this.districts[i], nx = Math.round(x0 + (x1 - x0) * (i / (n - 1))), sel = i === this.mapSel;
+        // node
+        ctx.fillStyle = d.unlocked ? (sel ? P.gold : P.good) : "#3a3f52";
+        ctx.beginPath(); ctx.arc(nx, y, sel ? 7 : 5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#0e0c1c"; ctx.beginPath(); ctx.arc(nx, y, sel ? 4 : 3, 0, Math.PI * 2); ctx.fill();
+        if (!d.unlocked) Font.draw(ctx, "?", nx, y - 4, { align: "center", color: P.textDim, scale: 1 });
+        if (sel) { ctx.strokeStyle = P.gold; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(nx, y, 10 + Math.sin(this.time * 6), 0, Math.PI * 2); ctx.stroke(); }
+        Font.draw(ctx, d.name, nx, y + 14, { align: "center", color: d.unlocked ? (sel ? P.text : P.textDim) : "#4c4f6b", scale: 1 });
+        if (i > 0 && this.districts[i - 1].unlocked && d.unlocked) { /* shortcut open */ }
+      }
+      Font.draw(ctx, "< >  SELECT      Z  TRAVEL      TAB/ESC  CLOSE", VIEW_W / 2, VIEW_H - 22, { align: "center", color: P.textDim, scale: 1 });
     },
 
     _beginWon() {
@@ -468,6 +548,7 @@
       if (this.state === "caught") this._drawCaught(ctx);
       if (this.state === "dive") RC.Dive.draw(ctx);
       if (this.state === "cook") RC.Cook.draw(ctx);
+      if (this.state === "map") this._drawMap(ctx);
       if (this.state === "won") this._drawWon(ctx);
       if (this.state === "win") this._drawWin(ctx);
 
@@ -511,6 +592,8 @@
           }
         }
       }
+      // health masks (top-right)
+      for (let i = 0; i < this.player.maxHp; i++) S.heart(ctx, VIEW_W - 11 - i * 10, 8, i < this.player.hp);
       // inventory bag (bottom-left)
       let ix = 8; const iy = VIEW_H - 12;
       Font.draw(ctx, "BAG", ix, iy - 1, { color: P.textDim, scale: 1 }); ix += 24;
@@ -534,9 +617,9 @@
         Font.draw(ctx, d >= 0.85 ? "SPOTTED!" : "DETECTION", VIEW_W / 2, by + 8, { align: "center", color: col, scale: 1 });
         // red edge pulse when high
         if (d > 0.5) {
-          ctx.save(); ctx.globalAlpha = (d - 0.5) * 0.8;
-          const g = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.4, VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.75);
-          g.addColorStop(0, "rgba(255,60,80,0)"); g.addColorStop(1, "rgba(255,40,60,0.7)");
+          ctx.save(); ctx.globalAlpha = (d - 0.5) * 0.5;
+          const g = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.45, VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.8);
+          g.addColorStop(0, "rgba(255,60,80,0)"); g.addColorStop(1, "rgba(255,40,60,0.6)");
           ctx.fillStyle = g; ctx.fillRect(0, 0, VIEW_W, VIEW_H); ctx.restore();
         }
       }
@@ -654,8 +737,8 @@
     _drawCaught(ctx) {
       const a = M.sat(this.caughtT * 2);
       ctx.globalAlpha = a;
-      Font.draw(ctx, "BUSTED!", VIEW_W / 2, VIEW_H / 2 - 8, { align: "center", color: P.bad, scale: 3, tracking: 2, shadow: true });
-      Font.draw(ctx, "SLIP BACK INTO THE SHADOWS...", VIEW_W / 2, VIEW_H / 2 + 16, { align: "center", color: P.text, scale: 1 });
+      Font.draw(ctx, "KNOCKED OUT", VIEW_W / 2, VIEW_H / 2 - 8, { align: "center", color: P.bad, scale: 3, tracking: 2, shadow: true });
+      Font.draw(ctx, "SHAKE IT OFF, POP — THE KITS NEED YOU...", VIEW_W / 2, VIEW_H / 2 + 16, { align: "center", color: P.text, scale: 1 });
       ctx.globalAlpha = 1;
     },
 

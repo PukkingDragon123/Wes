@@ -173,6 +173,15 @@
       // a couple of decorative shorter roofs trailing off to the right edge
       building(136, 143, 16); building(147, 156, 18);
 
+      // ===== ROBOT SECURITY (harder, later zones) =====
+      this.guardsDef.push({ type: "robot", rkind: "drone", x: cx(75), y: surf(g) - 58, min: cx(68), max: cx(84) });
+      this.guardsDef.push({ type: "robot", rkind: "walker", x: cx(110), y: surf(12), min: cx(104), max: cx(115), dir: -1 });
+      this.guardsDef.push({ type: "robot", rkind: "walker", x: cx(126), y: surf(8), min: cx(119), max: cx(131), dir: 1 });
+      this.guardsDef.push({ type: "robot", rkind: "drone", x: cx(124), y: surf(8) - 40, min: cx(118), max: cx(131) });
+
+      // ===== district signposts for the city map =====
+      this.spawns.push({ type: "sign", x: cx(2), y: surf(g), name: "HOME (THE DEN)" });
+
       // find player spawn
       const ps = this.spawns.find((s) => s.type === "player");
       if (ps) this.spawn = { x: ps.x, y: ps.y };

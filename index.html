@@ -56,21 +56,24 @@
     gap:8px; grid-template-areas:". up ." "lf dn rt"; }
   #touch .up{grid-area:up} #touch .lf{grid-area:lf} #touch .dn{grid-area:dn} #touch .rt{grid-area:rt}
   #touch .dpad .tbtn{ font-size:18px; }
-  #touch .acts{ display:grid; grid-template-columns:repeat(2,64px); grid-template-rows:repeat(2,64px);
-    gap:10px; grid-template-areas:"climb throw" "jump jump"; align-items:end; }
-  #touch .climb{grid-area:climb} #touch .throw{grid-area:throw}
-  #touch .jump{grid-area:jump; width:auto; height:60px; background:rgba(90,70,150,.5); border-color:#b7b1e0; }
+  #touch .acts{ display:grid; grid-template-columns:repeat(2,64px); grid-template-rows:repeat(2,60px);
+    gap:9px; grid-template-areas:"atk jump" "climb throw"; align-items:end; }
+  #touch .atk{grid-area:atk; background:rgba(160,60,72,.52); border-color:#e0a0a8;}
+  #touch .jump{grid-area:jump; background:rgba(90,70,150,.52); border-color:#b7b1e0;}
+  #touch .climb{grid-area:climb; font-size:10px;} #touch .throw{grid-area:throw; font-size:10px;}
+  #touch .mapb{ position:absolute; top:14px; right:16px; width:auto; height:26px; padding:0 10px; font-size:10px; }
   body.touch #hint{ display:none; }
 </style>
 </head>
 <body>
   <div id="wrap">
-    <canvas id="game" width="384" height="216"></canvas>
+    <canvas id="game" width="480" height="270"></canvas>
   </div>
   <div id="hint">Move <b>← →</b> · Jump <b>Z</b> · Climb <b>X</b> · Throw/Grab <b>C</b> · Hide/Dive <b>↓</b> · Pause <b>Esc</b></div>
   <div id="rotate">Rotate your device to landscape 🦝</div>
 
   <div id="touch" aria-hidden="true">
+    <button class="tbtn mapb" data-k="Tab">MAP</button>
     <div class="dpad">
       <button class="tbtn up" data-k="ArrowUp">▲</button>
       <button class="tbtn lf" data-k="ArrowLeft">◀</button>
@@ -78,9 +81,10 @@
       <button class="tbtn rt" data-k="ArrowRight">▶</button>
     </div>
     <div class="acts">
-      <button class="tbtn climb" data-k="KeyX">CLIMB</button>
-      <button class="tbtn throw" data-k="KeyC">THROW</button>
+      <button class="tbtn atk" data-k="KeyX">HIT</button>
       <button class="tbtn jump" data-k="KeyZ">JUMP</button>
+      <button class="tbtn climb" data-k="ShiftLeft">CLIMB</button>
+      <button class="tbtn throw" data-k="KeyC">THROW</button>
     </div>
   </div>
 

@@ -27,6 +27,7 @@
     px: 78, py: 34, pw: 228, ph: 150,
 
     start(spot, game) {
+      this.px = Math.round((VW - this.pw) / 2); this.py = Math.round((VH - this.ph) / 2) + 6;
       this.game = game; this.spot = spot; this.done = false; this.result = null;
       this.exiting = 0; this.t = 0; this.msg = ""; this.msgT = 0; this.moveCd = 0;
       this.cursor = this.cols + 2; this.noise = 0; this.flyers = []; this.found = [];
@@ -153,6 +154,7 @@
     px: 92, py: 30, pw: 200, ph: 156,
 
     start(recipe, kid, game) {
+      this.px = Math.round((VW - this.pw) / 2); this.py = Math.round((VH - this.ph) / 2);
       this.game = game; this.recipe = recipe; this.kid = kid; this.done = false; this.result = null;
       this.pieces = recipe.ing.slice(); this.idx = 0; this.placed = [];
       this.dir = 1; this.cursorX = 0; this.speed = 82; this.range = 66;
